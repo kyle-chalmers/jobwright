@@ -28,7 +28,16 @@ jobwright has two orthogonal abstraction axes, expressed as two config blocks:
 - **platform** — the orchestrator a job *runs on* (`databricks` / `airflow` / `dbt` / `snowflake_tasks` / …). Owns the lifecycle verbs. Its `deploy_model` (`api-reset` | `git-sync` | `sql-ddl`) decides whether live-vs-repo drift even applies.
 - **warehouse / architecture** — the store a job *reads/writes* and the static schema-reference rules. Policy only; jobwright never opens a database connection.
 
-The platform seam is pluggable via thin adapters (a Python class implementing the verb contract + a markdown playbook). Databricks is the reference adapter; Airflow, dbt, and Snowflake Tasks are on the roadmap.
+The platform seam is pluggable via thin adapters (a Python class implementing the verb contract + a markdown playbook). Shipped adapters span all three deploy models:
+
+| Platform | `deploy_model` | Drift detection |
+|---|---|---|
+| Databricks Jobs (reference) | `api-reset` | yes — live can drift from repo |
+| Snowflake Tasks | `sql-ddl` | yes — live DDL vs repo DDL |
+| Apache Airflow | `git-sync` | n/a — git is the source of truth |
+| dbt | `git-sync` | n/a — project is the source of truth |
+
+The generic checks (`syntax`, `deps`, `architecture`, `docs`) and the deploy-safety guard are platform-agnostic — see [`examples/`](examples/) for a Databricks repo and an Airflow + BigQuery repo. Adding a platform is two files (a `JobPlatformAdapter` subclass + a markdown playbook); see [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Install
 
@@ -52,7 +61,7 @@ See [`jobwright.config.example.yaml`](jobwright.config.example.yaml) for the ful
 
 ## Status
 
-Alpha. Shipped: the deploy-safety guard, the jobs index, the Databricks reference adapter, the generic checks (`syntax` / `job-defs` / `deps` / `architecture` / `docs`) + composite `validate-job`, the job scaffolder + generated `AGENTS.md`, the SessionStart + index-regen hooks, and 10 lifecycle skills. Additional platform adapters (Airflow, Snowflake Tasks, dbt) and publishing are in progress.
+Alpha. Shipped: the deploy-safety guard, the jobs index, four platform adapters (Databricks, Snowflake Tasks, Airflow, dbt) across all three deploy models, the generic checks (`syntax` / `job-defs` / `deps` / `architecture` / `docs`) + composite `validate-job`, the job scaffolder + generated `AGENTS.md`, the SessionStart + index-regen hooks, and 10 lifecycle skills. Publishing is gated on a security/leak review — see [`docs/PUBLISHING.md`](docs/PUBLISHING.md).
 
 ### CLI
 
