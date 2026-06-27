@@ -28,17 +28,21 @@ from .base import (
     run_cli,
 )
 
-# Keys that are runtime/identity metadata, not part of the authored definition.
-# Dropped from both sides before diffing so a diff reflects real config drift.
+# Keys that are pure runtime/identity metadata (assigned by the platform), not part
+# of the authored definition. Dropped from both sides before diffing so a diff reflects
+# real config drift. NOTE: `run_as` is authored config (execution identity) and is
+# deliberately NOT dropped — a silent run_as change is exactly the drift we must catch.
 _VOLATILE_KEYS = {
     "job_id",
     "created_time",
     "creator_user_name",
-    "run_as",
-    "run_as_user_name",
     "effective_budget_policy_id",
     "settings",  # unwrapped before diffing (see _normalize)
 }
+
+# Lists whose order is not semantically meaningful — keyed by a stable id. Canonicalized
+# (sorted by that key) before diffing so reordering doesn't read as false drift.
+_KEYED_LISTS = {"tasks": "task_key", "job_clusters": "job_cluster_key"}
 
 
 class DatabricksAdapter(JobPlatformAdapter):
@@ -91,10 +95,14 @@ class DatabricksAdapter(JobPlatformAdapter):
             raise RuntimeError(f"databricks {' '.join(args)}: non-JSON output: {exc}") from exc
 
     def _job_def_dirs(self) -> list[Path]:
+        """Configured job-definition dirs, prod first — so an ambiguous match prefers
+        the prod definition rather than comparing live prod to a dev JSON."""
         dirs: list[Path] = []
         if self.config is not None:
-            for path in (self.config.platform.job_def_dirs or {}).values():
-                dirs.append(Path(path))
+            items = self.config.platform.job_def_dirs or {}
+            for env in (["prod"] + [e for e in items if e != "prod"]):
+                if env in items:
+                    dirs.append(Path(items[env]))
         return dirs
 
     def _find_repo_def_file(self, ref: str) -> Path | None:
@@ -116,15 +124,24 @@ class DatabricksAdapter(JobPlatformAdapter):
                     name = ""
                 if name and name.lower() == ref_l:
                     candidates.append(f)
-        # Prefer a prod dir match if multiple; otherwise first.
+        # _job_def_dirs() yields prod first, so the first candidate is the prod match.
         return candidates[0] if candidates else None
 
     @staticmethod
     def _normalize(spec: dict) -> dict:
-        """Return the authored settings, unwrapping `settings` and dropping volatile keys."""
+        """Return the authored settings: unwrap `settings`, drop volatile keys, and
+        canonicalize keyed lists (tasks/job_clusters) so reordering isn't false drift."""
         if isinstance(spec.get("settings"), dict):
             spec = spec["settings"]
-        return {k: v for k, v in spec.items() if k not in _VOLATILE_KEYS}
+        out = {k: v for k, v in spec.items() if k not in _VOLATILE_KEYS}
+        for key, id_field in _KEYED_LISTS.items():
+            val = out.get(key)
+            if isinstance(val, list):
+                out[key] = sorted(
+                    val,
+                    key=lambda item: (item.get(id_field, "") if isinstance(item, dict) else str(item)),
+                )
+        return out
 
     # ----- discovery / recall ------------------------------------------------
     def list_jobs(self) -> list[JobRef]:
@@ -164,9 +181,13 @@ class DatabricksAdapter(JobPlatformAdapter):
         if f:
             with contextlib.suppress(OSError, json.JSONDecodeError):
                 name = (json.loads(f.read_text()) or {}).get("name", ref)
-        for jr in self.list_jobs():
-            if jr.name == name:
-                return jr.job_id
+        matches = [jr.job_id for jr in self.list_jobs() if jr.name == name]
+        if len(matches) > 1:
+            raise LookupError(
+                f"multiple live Databricks jobs named {name!r} ({matches}); pass an explicit job_id to disambiguate."
+            )
+        if matches:
+            return matches[0]
         raise LookupError(f"no live Databricks job named {name!r} (resolved from {ref!r})")
 
     def get_live_definition(self, ref: str) -> JobDefinition:
