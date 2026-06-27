@@ -11,17 +11,16 @@ here are generic by design — but the *provenance* warrants a sign-off, not an 
 
 ## 2. Leak audit (must return nothing)
 
-The package must contain **zero** org-specific values. Grep before tagging a release:
+The package must contain **zero** org-specific values. Run before tagging a release
+(uses `git grep` so the pathspec exclusion works; this file is excluded because it
+necessarily contains the search terms as its pattern):
 
 ```bash
 # from the jobwright repo root — every hit is a blocker
-grep -rniE '|data_store|cron_store|bi_automation|self.?healing.?bot|\
+git grep -niE '|data_store|cron_store|bi_automation|self.?healing.?bot|\
 xoxb-|us-east-1|174688722531|246597639321|C0[0-9A-Z]{8,}' \
-  --include='*.py' --include='*.md' --include='*.yaml' --include='*.json' \
-  -- . ':(exclude).git' ':(exclude)docs/PUBLISHING.md'
+  -- ':(exclude)docs/PUBLISHING.md'
 ```
-
-(The audit excludes this file, which necessarily contains the search terms as its pattern.)
 
 Specifically confirm NONE of these ever ship in the package:
 

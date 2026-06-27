@@ -44,8 +44,11 @@ Issues = "https://github.com/kyle-chalmers/jobwright/issues"
 jobwright = "jobwright.cli:app"
 
 [tool.hatch.build.targets.wheel]
-# The whole jobwright/ package ships, including the Jinja scaffold templates
-# under jobwright/_templates/ and the markdown adapter playbooks.
+# The PyPI wheel ships the jobwright/ package, including the Jinja scaffold templates
+# under jobwright/_templates/ (non-.py files are included by default). The Claude Code
+# plugin artifacts (adapters/, skills/, hooks/, .claude-plugin/) are distributed via the
+# plugin marketplace (git), NOT the wheel — the guard reads destructive_patterns from the
+# Python adapter classes (which ARE in the wheel), so the CLI works pip-installed alone.
 packages = ["jobwright"]
 
 [tool.ruff]

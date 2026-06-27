@@ -61,6 +61,10 @@ def main(argv: list[str]) -> int:
     if not argv:
         print("schema_compliance: no paths to scan")
         return 0
+    missing = [p for p in argv if not Path(p).exists()]
+    if missing:
+        print(f"ERROR: path(s) not found: {', '.join(missing)}", file=sys.stderr)
+        return 2
     try:
         cfg = load_config()
     except ConfigError as exc:
