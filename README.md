@@ -52,6 +52,14 @@ See [`jobwright.config.example.yaml`](jobwright.config.example.yaml) for the ful
 
 ## Status
 
-Alpha. Phase 0 ships the deploy-safety guard, the jobs index, the Databricks adapter, and the `doctor` / `jobs-index` / `diff-job` CLI. Per-job validation, architecture-compliance scanning, the lifecycle skills, and additional platform adapters are in progress.
+Alpha. Shipped: the deploy-safety guard, the jobs index, the Databricks reference adapter, the generic checks (`syntax` / `job-defs` / `deps` / `architecture` / `docs`) + composite `validate-job`, the job scaffolder + generated `AGENTS.md`, the SessionStart + index-regen hooks, and 10 lifecycle skills. Additional platform adapters (Airflow, Snowflake Tasks, dbt) and publishing are in progress.
+
+### CLI
+
+```
+jobwright doctor | init | jobs-index [--check] | validate-job <folder> [--offline]
+          check {syntax|job-defs|deps|architecture|docs} <paths>
+          new-job <ticket> "<name>" | gen-agents | diff-job <job>
+```
 
 MIT licensed.

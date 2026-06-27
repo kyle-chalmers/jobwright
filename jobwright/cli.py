@@ -166,6 +166,76 @@ def diff_job(
     raise typer.Exit(1)
 
 
+_STARTER_CONFIG = """\
+schema_version: 1
+project:
+  name: "My Data Jobs"
+  key_prefixes: ["JOB"]
+  jobs_dir: jobs
+platform:
+  kind: databricks            # databricks | airflow | dbt | snowflake_tasks | ...
+  profile: prod
+  deploy_model: api-reset     # api-reset | git-sync | sql-ddl
+  job_def_dirs:
+    dev: databricks/job_definitions/dev
+    prod: databricks/job_definitions/prod
+warehouse:
+  dialect: snowflake
+architecture:
+  layers: [RAW, STAGING, ANALYTICS, REPORTING]
+  layer_rules:
+    STAGING: [RAW, STAGING]
+    ANALYTICS: [STAGING, ANALYTICS]
+    REPORTING: [STAGING, ANALYTICS, REPORTING]
+  deprecated_schema_deny: []
+"""
+
+
+@app.command()
+def init() -> None:
+    """Write a starter jobwright.config.yaml in the current directory (if absent)."""
+    if find_config() is not None:
+        typer.secho(f"{CONFIG_FILENAME} already exists — nothing to do.", fg=typer.colors.YELLOW)
+        raise typer.Exit(0)
+    from pathlib import Path as _P
+
+    _P(CONFIG_FILENAME).write_text(_STARTER_CONFIG)
+    typer.secho(f"Wrote {CONFIG_FILENAME}. Edit it, then run `jobwright doctor`.", fg=typer.colors.GREEN)
+
+
+@app.command("new-job")
+def new_job_cmd(
+    ticket: str = typer.Argument(..., help="ticket key, e.g. BI-1234"),
+    name: str = typer.Argument(..., help="human job name, e.g. 'Outbound List Generation'"),
+    force: bool = typer.Option(False, "--force", help="overwrite existing files"),
+) -> None:
+    """Scaffold a governed job folder (claude.md + notebook header + paused def stub)."""
+    from datetime import date
+
+    from .scaffolder import new_job
+
+    cfg, root = _load()
+    res = new_job(cfg, root, ticket, name, today=date.today().isoformat(), force=force)
+    for p in res.created:
+        typer.secho(f"  + {p.relative_to(root)}", fg=typer.colors.GREEN)
+    for p in res.skipped:
+        typer.secho(f"  · {p.relative_to(root)} (exists; --force to overwrite)", fg=typer.colors.YELLOW)
+    typer.echo(f"\nNext: fill the TODOs, then `jobwright validate-job {res.job_dir.relative_to(root)}`.")
+
+
+@app.command("gen-agents")
+def gen_agents_cmd(
+    output: str = typer.Option("AGENTS.jobwright.md", "--output", "-o", help="output path (relative to repo root)"),
+) -> None:
+    """Render an AGENTS.md rulebook from config (the generated rulebook)."""
+    from .scaffolder import render_agents_md
+
+    cfg, root = _load()
+    out = root / output
+    out.write_text(render_agents_md(cfg))
+    typer.secho(f"Wrote {output} from jobwright.config.yaml.", fg=typer.colors.GREEN)
+
+
 check_app = typer.Typer(no_args_is_help=True, help="Run a single generic check (file-based; no platform calls).")
 app.add_typer(check_app, name="check")
 
