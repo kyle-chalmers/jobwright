@@ -1,0 +1,12 @@
+{
+  "name": "jobwright",
+  "owner": { "name": "Kyle Chalmers" },
+  "description": "jobwright — govern, validate, and safely ship data-orchestration jobs with Claude Code.",
+  "plugins": [
+    {
+      "name": "jobwright",
+      "source": "./",
+      "description": "A jobs index, architecture-compliance scanning, a live-vs-repo deploy-safety guard, and per-job validation for Databricks / Airflow / dbt / Snowflake Tasks job repos."
+    }
+  ]
+}

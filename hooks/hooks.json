@@ -1,0 +1,13 @@
+{
+  "//": "jobwright Claude Code hooks. The deploy-safety guard runs before every Bash call and asks for confirmation on destructive job/SQL commands (e.g. `databricks jobs reset` without a live diff). The SessionStart + index hooks are wired in Phase 2. All hooks are stdlib-only, fail-open, and zero-cost outside a jobwright repo (they exit silently unless jobwright.config.yaml is present).",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/deploy_safety.py\"" }
+        ]
+      }
+    ]
+  }
+}
