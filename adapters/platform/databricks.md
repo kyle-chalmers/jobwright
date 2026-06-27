@@ -13,6 +13,7 @@ destructive_patterns:
   # selftest.sh checks both lists agree.
   - 'databricks\s+jobs\s+reset\b'
   - 'databricks\s+jobs\s+delete\b'
+  - 'databricks\s+jobs\s+update\b'
   - 'databricks\s+jobs\s+(run-now|submit)\b'
 ---
 
