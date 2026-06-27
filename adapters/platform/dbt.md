@@ -8,8 +8,8 @@ auth: |
   `dbt` CLI with a configured profiles.yml. Verify: `dbt debug`.
 destructive_patterns:
   # MUST stay in sync with DbtAdapter.destructive_patterns (jobwright/platforms/dbt.py).
-  - 'dbt\s+(?:run|build|seed|snapshot)\b(?=.*(?:--target|-t)\s+prod\b)'
-  - 'dbt\s+run-operation\b'
+  - 'dbt\b(?=.*\b(?:run|build|seed|snapshot)\b)(?=.*(?:--target|-t)[=\s]+prod(?![\w-]))'
+  - 'dbt\b(?=.*\brun-operation\b)'
 ---
 
 # dbt adapter

@@ -43,7 +43,9 @@ DESTRUCTIVE_SQL = re.compile(
 )
 
 # Fallback patterns used only if the installed jobwright package can't be imported
-# (e.g. before `pip install`). The package's adapters are the real source of truth.
+# (e.g. a vendored copy before `pip install`). The package's adapters are the real
+# source of truth; a test asserts these MIRROR the adapter patterns for every
+# registered platform so the fallback can't silently drift weaker.
 EMBEDDED_DEFAULTS: dict[str, list[dict[str, str]]] = {
     "databricks": [
         {"pattern": r"databricks\s+jobs\s+reset\b",
@@ -54,17 +56,21 @@ EMBEDDED_DEFAULTS: dict[str, list[dict[str, str]]] = {
          "reason": "Triggering a prod run can have downstream side-effects; check for active runs first."},
     ],
     "airflow": [
-        {"pattern": r"airflow\s+dags\s+delete\b", "reason": "`airflow dags delete` removes all metadata/history for a DAG."},
-    ],
-    "prefect": [
-        {"pattern": r"prefect\s+(deployment|flow-run|work-pool)\s+delete\b", "reason": "Deletes a Prefect deployment/run/work-pool."},
+        {"pattern": r"airflow\s+dags\s+delete\b", "reason": "`airflow dags delete` removes a DAG and its history."},
+        {"pattern": r"airflow\s+db\s+(reset|clean|downgrade)\b", "reason": "`airflow db reset/clean/downgrade` mutates the metadata DB."},
     ],
     "dbt": [
-        {"pattern": r"dbt\s+(run|build|seed)\b(?=.*(--target|-t)\s+prod)", "reason": "A dbt prod run/build mutates warehouse objects."},
+        {"pattern": r"dbt\b(?=.*\b(?:run|build|seed|snapshot)\b)(?=.*(?:--target|-t)[=\s]+prod(?![\w-]))",
+         "reason": "A dbt run/build against the prod target mutates production warehouse objects."},
+        {"pattern": r"dbt\b(?=.*\brun-operation\b)", "reason": "`dbt run-operation` executes an arbitrary macro against the warehouse."},
     ],
     "snowflake_tasks": [
         {"pattern": r"\bDROP\s+TASK\b", "reason": "`DROP TASK` removes a scheduled task."},
         {"pattern": r"\bCREATE\s+OR\s+REPLACE\s+TASK\b", "reason": "`CREATE OR REPLACE TASK` overwrites a live task definition."},
+        {"pattern": r"\bALTER\s+TASK\b", "reason": "`ALTER TASK` mutates a live task."},
+    ],
+    "prefect": [  # no adapter yet — bonus fallback coverage
+        {"pattern": r"prefect\s+(deployment|flow-run|work-pool)\s+delete\b", "reason": "Deletes a Prefect deployment/run/work-pool."},
     ],
 }
 

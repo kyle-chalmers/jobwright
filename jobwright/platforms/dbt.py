@@ -30,9 +30,12 @@ class DbtAdapter(JobPlatformAdapter):
     kind = "dbt"
     deploy_model = "git-sync"
     destructive_patterns = [
-        {"pattern": r"dbt\s+(?:run|build|seed|snapshot)\b(?=.*(?:--target|-t)\s+prod\b)",
+        # Order-independent: a dbt invocation with a run-ish subcommand AND a prod target,
+        # tolerating `--target prod`, `--target=prod`, `-t prod`, and global opts before the
+        # subcommand. `prod(?![\w-])` rejects prod-dev / prodx.
+        {"pattern": r"dbt\b(?=.*\b(?:run|build|seed|snapshot)\b)(?=.*(?:--target|-t)[=\s]+prod(?![\w-]))",
          "reason": "A dbt run/build/seed/snapshot against the prod target mutates production warehouse objects."},
-        {"pattern": r"dbt\s+run-operation\b",
+        {"pattern": r"dbt\b(?=.*\brun-operation\b)",
          "reason": "`dbt run-operation` executes an arbitrary macro against the warehouse — confirm what it does and the target."},
     ]
 
@@ -67,9 +70,12 @@ class DbtAdapter(JobPlatformAdapter):
         raise ManualFallback("Deploy = git push of the dbt project; the scheduler/dbt Cloud picks it up.")
 
     def trigger_run(self, ref: str, params: dict | None = None, env: str = "prod") -> str:
-        # default target (dev); a prod target is caught by the deploy-safety guard.
-        proc = run_cli(["dbt", "build", "--select", ref])
-        return "ok" if proc.returncode == 0 else f"exit {proc.returncode}"
+        # dbt build mutates the warehouse and the local default target may itself be prod,
+        # so jobwright won't auto-run it — the human runs it under the deploy-safety guard.
+        raise ManualFallback(
+            f"Run dbt yourself with an explicit target: `dbt build --select {ref} --target <env>`. "
+            "A prod target is gated by the deploy-safety guard."
+        )
 
     def get_run(self, run_id: str) -> RunInfo:
         raise ManualFallback("dbt core runs aren't addressable by id; inspect target/run_results.json or the dbt Cloud Runs API.")
