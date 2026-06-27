@@ -22,6 +22,13 @@ app = typer.Typer(
 )
 
 
+def _check_fmt(fmt: str) -> str:
+    if fmt not in ("md", "json"):
+        typer.secho(f"--format must be 'md' or 'json' (got {fmt!r}).", fg=typer.colors.RED)
+        raise typer.Exit(2)
+    return fmt
+
+
 def _load():
     """Load config + return (config, repo_root). Exits cleanly on error."""
     cfg_path = find_config()
@@ -74,6 +81,14 @@ def doctor() -> None:
         if cfg.platform.kind in adapter_kinds():
             cls = get_adapter_class(cfg.platform.kind)
             typer.secho(f"✓ adapter: {cls.__name__} (deploy_model={cls.deploy_model})", fg=typer.colors.GREEN)
+            if cls.deploy_model != cfg.platform.deploy_model:
+                typer.secho(
+                    f"✗ deploy_model mismatch: config says '{cfg.platform.deploy_model}' but the "
+                    f"{cfg.platform.kind} adapter is '{cls.deploy_model}'. Fix config — a wrong "
+                    "deploy_model can disable drift detection.",
+                    fg=typer.colors.RED,
+                )
+                ok = False
         else:
             typer.secho(
                 f"✗ no adapter registered for '{cfg.platform.kind}' (have: {adapter_kinds()})",
@@ -131,15 +146,17 @@ def diff_job(
     from .platforms import get_adapter
 
     cfg, _ = _load()
-    if cfg.platform.deploy_model == "git-sync":
+    adapter = get_adapter(cfg.platform.kind, profile=cfg.platform.profile, config=cfg)
+    # Gate on the ADAPTER's deploy_model (authoritative), not config's — a config typo
+    # to git-sync must not silently disable live-vs-repo drift detection.
+    if adapter.deploy_model == "git-sync":
         typer.secho(
-            f"platform '{cfg.platform.kind}' is git-sync — code is the source of truth, so there is "
+            f"platform '{adapter.kind}' is git-sync — code is the source of truth, so there is "
             "no live-vs-repo drift. Use `git status` / `git diff` instead.",
             fg=typer.colors.YELLOW,
         )
         raise typer.Exit(0)
 
-    adapter = get_adapter(cfg.platform.kind, profile=cfg.platform.profile, config=cfg)
     try:
         result = adapter.diff_live_vs_repo(ref)
     except Exception as exc:
@@ -253,7 +270,7 @@ def check_architecture(
     """Scan for deprecated-schema references and layer-rule violations."""
     from .tools import schema_compliance
 
-    raise typer.Exit(schema_compliance.main(["--format", fmt, *paths]))
+    raise typer.Exit(schema_compliance.main(["--format", _check_fmt(fmt), *paths]))
 
 
 @check_app.command("docs")
@@ -264,7 +281,7 @@ def check_docs(
     """Lint claude.md + notebook-header completeness against governance config."""
     from .tools import job_doc_lint
 
-    raise typer.Exit(job_doc_lint.main(["--format", fmt, *job_dirs]))
+    raise typer.Exit(job_doc_lint.main(["--format", _check_fmt(fmt), *job_dirs]))
 
 
 @check_app.command("syntax")
@@ -300,6 +317,7 @@ def validate_job_cmd(
     """Composite PASS/FAIL gate for one job (syntax + job-defs + deps + architecture + docs)."""
     from .tools import validate_job as vj
 
+    _check_fmt(fmt)
     cfg, root = _load()
     result = vj.validate(Path(job_dir), cfg, offline=offline, root=root)
     if fmt == "json":

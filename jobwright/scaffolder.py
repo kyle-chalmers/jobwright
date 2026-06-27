@@ -81,11 +81,13 @@ def new_job(cfg, root, ticket: str, name: str, today: str, force: bool = False) 
     _write(job_dir / "claude.md", env.get_template("job/claude.md.j2").render(**ctx))
     _write(job_dir / notebook, env.get_template("job/notebook_header.py.j2").render(**ctx))
 
-    # Deploy-from-repo platforms get a paused job-definition stub in the dev dir.
-    if cfg.platform.deploy_model in ("api-reset", "sql-ddl"):
-        dev_dir = (cfg.platform.job_def_dirs or {}).get("dev")
-        if dev_dir:
-            _write(root / dev_dir / f"{folder}.json", env.get_template("job/job_definition.json.j2").render(**ctx))
+    # Deploy-from-repo platforms get a definition stub in the dev dir, in the artifact
+    # format that platform actually uses: JSON for api-reset, DDL .sql for sql-ddl.
+    dev_dir = (cfg.platform.job_def_dirs or {}).get("dev")
+    if dev_dir and cfg.platform.deploy_model == "api-reset":
+        _write(root / dev_dir / f"{folder}.json", env.get_template("job/job_definition.json.j2").render(**ctx))
+    elif dev_dir and cfg.platform.deploy_model == "sql-ddl":
+        _write(root / dev_dir / f"{folder}.sql", env.get_template("job/task_definition.sql.j2").render(**ctx))
 
     return ScaffoldResult(job_dir=job_dir, created=created, skipped=skipped)
 

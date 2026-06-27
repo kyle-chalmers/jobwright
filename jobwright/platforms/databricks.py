@@ -64,6 +64,10 @@ class DatabricksAdapter(JobPlatformAdapter):
             "reason": "`databricks jobs delete` permanently removes a job. Confirm the target job_id and that it is intended.",
         },
         {
+            "pattern": r"databricks\s+jobs\s+update\b",
+            "reason": "`databricks jobs update` mutates the live job definition. Run `jobwright diff-job` first so the change is intentional, not applied from a stale repo JSON.",
+        },
+        {
             "pattern": r"databricks\s+jobs\s+(run-now|submit)\b",
             "reason": (
                 "Triggering a production run can have downstream side-effects (file delivery, "

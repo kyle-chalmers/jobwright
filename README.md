@@ -2,7 +2,7 @@
 
 **An open-source AI layer for governing, validating, and safely shipping data-orchestration jobs with Claude Code.**
 
-jobwright treats your *jobs* — Databricks Jobs, Airflow DAGs, dbt jobs, Snowflake Tasks — as deployable artifacts that deserve a governed lifecycle: a catalog you can recall before you rebuild, architecture-compliance scanning, a per-job validation gate, and a deploy-safety guard that makes a stale-definition overwrite mechanically impossible.
+jobwright treats your *jobs* — Databricks Jobs, Airflow DAGs, dbt jobs, Snowflake Tasks — as deployable artifacts that deserve a governed lifecycle: a catalog you can recall before you rebuild, architecture-compliance scanning, a per-job validation gate, and a deploy-safety guard that prompts for confirmation before known destructive commands (so a stale-definition overwrite can't happen unattended).
 
 It is the third in a family of Claude Code "AI layer" kits:
 

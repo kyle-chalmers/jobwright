@@ -1,0 +1,9 @@
+-- {{ ticket }} {{ name }} — task definition (scaffolded by jobwright; fill in the TODOs).
+-- sql-ddl deploy model: this DDL is the source of truth. Run `jobwright diff-job` before
+-- applying CREATE OR REPLACE against a live task.
+CREATE OR REPLACE TASK {{ folder }}
+  WAREHOUSE = TODO_WAREHOUSE
+  SCHEDULE = 'USING CRON 0 12 * * * America/New_York'
+  -- SUSPENDED by default; resume explicitly after review.
+AS
+  SELECT 1;  -- TODO: task body

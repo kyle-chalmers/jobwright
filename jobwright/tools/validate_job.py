@@ -30,14 +30,14 @@ def _ticket_of(job_dir: Path, prefixes) -> str | None:
     return m.group(0) if m else None
 
 
-def _def_files_for(ticket: str | None, cfg, root: Path) -> list[Path]:
+def _def_files_for(ticket: str | None, cfg, root: Path, ext: str = ".json") -> list[Path]:
     if not ticket:
         return []
     out: list[Path] = []
     for rel in (cfg.platform.job_def_dirs or {}).values():
         d = root / rel
         if d.is_dir():
-            out += [f for f in sorted(d.glob("*.json")) if f.stem.split("_", 1)[0].lower() == ticket.lower()]
+            out += [f for f in sorted(d.glob(f"*{ext}")) if f.stem.split("_", 1)[0].lower() == ticket.lower()]
     return out
 
 
@@ -55,19 +55,27 @@ def validate(job_dir: Path, cfg, offline: bool = False, root: Path | None = None
     # 2) job-definition JSON
     deployable = tuple(rel.rstrip("/") + "/" for rel in (cfg.platform.job_def_dirs or {}).values())
     ticket = _ticket_of(job_dir, cfg.project.key_prefixes)
-    def_files = _def_files_for(ticket, cfg, root)
-    def_errs = [e for f in def_files if (e := validate_job_definitions.check_file(str(f), deployable or validate_job_definitions.DEFAULT_DEPLOYABLE_DIRS))]
-    # on api-reset / sql-ddl platforms a deployed job MUST have a repo definition;
-    # git-sync platforms (code is the source of truth) legitimately have none.
-    requires_def = cfg.platform.deploy_model in ("api-reset", "sql-ddl")
+    # The definition artifact format depends on the deploy model: JSON for api-reset,
+    # DDL .sql for sql-ddl, none for git-sync (code is the source of truth).
+    deploy_model = cfg.platform.deploy_model
+    def_ext = {"api-reset": ".json", "sql-ddl": ".sql"}.get(deploy_model)
+    def_files = _def_files_for(ticket, cfg, root, def_ext) if def_ext else []
+    # Only JSON defs get the name-presence validation; .sql defs are checked for presence.
+    def_errs = [
+        e for f in def_files
+        if f.suffix == ".json"
+        and (e := validate_job_definitions.check_file(str(f), deployable or validate_job_definitions.DEFAULT_DEPLOYABLE_DIRS))
+    ]
+    requires_def = deploy_model in ("api-reset", "sql-ddl")
     missing_required = requires_def and not def_files
+    artifact = {"api-reset": "job-def JSON", "sql-ddl": "task DDL (*.sql)"}.get(deploy_model, "definition")
     checks.append({
         "name": "job_definitions",
         "ok": (not def_errs) and not missing_required,
         "detail": def_errs or (
-            f"{len(def_files)} def file(s) OK" if def_files
-            else (f"REQUIRED job-def JSON missing for {ticket} (deploy_model={cfg.platform.deploy_model})"
-                  if requires_def else f"no job-def JSON (not required for {cfg.platform.deploy_model})")
+            f"{len(def_files)} {artifact} file(s) OK" if def_files
+            else (f"REQUIRED {artifact} missing for {ticket} (deploy_model={deploy_model})"
+                  if requires_def else f"no definition file (not required for {deploy_model})")
         ),
     })
 

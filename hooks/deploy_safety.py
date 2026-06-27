@@ -52,6 +52,8 @@ EMBEDDED_DEFAULTS: dict[str, list[dict[str, str]]] = {
          "reason": "`databricks jobs reset` is a full replace of the live job from the file you pass. Repo JSONs can be stale — run a live-vs-repo diff first; a stale-JSON reset has broken production jobs."},
         {"pattern": r"databricks\s+jobs\s+delete\b",
          "reason": "`databricks jobs delete` permanently removes a job."},
+        {"pattern": r"databricks\s+jobs\s+update\b",
+         "reason": "`databricks jobs update` mutates the live job definition — diff against the repo first."},
         {"pattern": r"databricks\s+jobs\s+(run-now|submit)\b",
          "reason": "Triggering a prod run can have downstream side-effects; check for active runs first."},
     ],
