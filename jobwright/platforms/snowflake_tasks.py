@@ -28,10 +28,33 @@ from .base import (
     run_cli,
 )
 
+# A task ref: identifier or DB.SCHEMA.NAME (each part a SQL identifier). Anything else is
+# rejected before being interpolated into SQL.
+_TASK_REF_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*(\.[A-Za-z_][A-Za-z0-9_$]*){0,2}$")
+
+
+def _check_ref(ref: str) -> str:
+    if not _TASK_REF_RE.match(ref):
+        raise ValueError(f"invalid Snowflake task ref {ref!r} (expected NAME or DB.SCHEMA.NAME).")
+    return ref
+
 
 def _normalize_ddl(ddl: str) -> str:
-    """Whitespace/case-insensitive form for comparing task DDL (drift detection)."""
-    return re.sub(r"\s+", " ", ddl).strip().lower()
+    """A comparison form for task DDL (drift detection). Heuristic, NOT a SQL parser:
+    strips line/block comments and trailing semicolons, collapses whitespace, and
+    lowercases everything OUTSIDE single-quoted string literals (literal case is
+    preserved so a case-only change inside a literal still reads as drift). A flagged
+    drift should still be eyeballed; treat 'no drift' as best-effort."""
+    ddl = re.sub(r"--[^\n]*", "", ddl)               # line comments
+    ddl = re.sub(r"/\*.*?\*/", "", ddl, flags=re.DOTALL)  # block comments
+    parts = re.split(r"('(?:[^']|'')*')", ddl)       # split out single-quoted literals
+    norm = []
+    for i, seg in enumerate(parts):
+        if i % 2 == 1:                               # a quoted literal — preserve case
+            norm.append(re.sub(r"\s+", " ", seg))
+        else:
+            norm.append(re.sub(r"\s+", " ", seg).lower())
+    return "".join(norm).strip().rstrip(";").strip()
 
 
 class SnowflakeTasksAdapter(JobPlatformAdapter):
@@ -78,7 +101,8 @@ class SnowflakeTasksAdapter(JobPlatformAdapter):
 
     # ----- drift / deploy-safety --------------------------------------------
     def get_live_definition(self, ref: str) -> JobDefinition:
-        rows = self._snow_json(f"SELECT GET_DDL('TASK', '{ref}') AS DDL")
+        _check_ref(ref)
+        rows = self._snow_json(f"SELECT GET_DDL('TASK', '{ref.replace(chr(39), chr(39) * 2)}') AS DDL")
         ddl = (rows[0].get("DDL") if rows else "") or ""
         return JobDefinition(name=ref, spec={"ddl": ddl}, source="live")
 
@@ -93,9 +117,11 @@ class SnowflakeTasksAdapter(JobPlatformAdapter):
         )
 
     def list_active_runs(self, ref: str) -> list[ActiveRun]:
+        _check_ref(ref)
+        task_name = ref.split(".")[-1]  # TASK_HISTORY TASK_NAME wants the bare name
         q = (
             "SELECT QUERY_ID, STATE, SCHEDULED_TIME FROM TABLE(INFORMATION_SCHEMA.TASK_HISTORY("
-            f"TASK_NAME => '{ref}')) WHERE STATE = 'EXECUTING'"
+            f"TASK_NAME => '{task_name.replace(chr(39), chr(39) * 2)}')) WHERE STATE = 'EXECUTING'"
         )
         rows = self._snow_json(q)
         return [ActiveRun(run_id=r.get("QUERY_ID", ""), state=r.get("STATE", "EXECUTING"),
@@ -109,6 +135,7 @@ class SnowflakeTasksAdapter(JobPlatformAdapter):
 
     # ----- execution / operate ----------------------------------------------
     def trigger_run(self, ref: str, params: dict | None = None, env: str = "prod") -> str:
+        _check_ref(ref)  # ref is a validated identifier/FQN, safe to interpolate
         rows = self._snow_json(f"EXECUTE TASK {ref}")
         return str((rows[0].get("status") if rows else "") or "executed")
 
