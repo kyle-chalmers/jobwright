@@ -10,8 +10,11 @@ Adding a platform = drop a module under ``jobwright/platforms/`` with a
 
 from __future__ import annotations
 
+from .airflow import AirflowAdapter
 from .base import JobPlatformAdapter, ManualFallback  # noqa: F401  (re-exported)
 from .databricks import DatabricksAdapter
+from .dbt import DbtAdapter
+from .snowflake_tasks import SnowflakeTasksAdapter
 
 _REGISTRY: dict[str, type[JobPlatformAdapter]] = {}
 
@@ -24,6 +27,9 @@ def register(adapter_cls: type[JobPlatformAdapter]) -> type[JobPlatformAdapter]:
 
 
 register(DatabricksAdapter)
+register(AirflowAdapter)
+register(SnowflakeTasksAdapter)
+register(DbtAdapter)
 
 
 def adapter_kinds() -> list[str]:

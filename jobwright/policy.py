@@ -5,7 +5,7 @@ This is jobwright's analog of streamsnow's ``SchemaPolicy``, generalized from a
 flat allow/deny list to two rule kinds:
 
 * **deprecated-schema denylist** — references to a schema being migrated away from
-  (e.g. ``DATA_STORE`` / ``CRON_STORE``) are flagged as migration debt, with an
+  (e.g. ``LEGACY_STORE`` / ``OLD_REPORTS``) are flagged as migration debt, with an
   optional replacement hint.
 * **layer-referencing rules** — a job declaring a ``# LAYER:`` may only reference
   the schemas its layer is allowed to (forbid upstream refs). Jobs that don't

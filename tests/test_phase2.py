@@ -22,8 +22,8 @@ def _cfg(tmp_path: Path):
                      "job_def_dirs": {"dev": "databricks/job_definitions/dev",
                                       "prod": "databricks/job_definitions/prod"}},
         "warehouse": {"dialect": "snowflake"},
-        "architecture": {"layers": ["RAW", "ANALYTICS"], "layer_rules": {"ANALYTICS": ["RAW", "ANALYTICS"]},
-                         "deprecated_schema_deny": ["DATA_STORE"]},
+        "architecture": {"layers": ["RAW", "MARTS"], "layer_rules": {"MARTS": ["RAW", "MARTS"]},
+                         "deprecated_schema_deny": ["LEGACY_STORE"]},
     })
 
 
@@ -48,8 +48,8 @@ def test_render_agents_md_reflects_config(tmp_path):
     md = render_agents_md(_cfg(tmp_path))
     assert "databricks" in md
     assert "api-reset" in md
-    assert "DATA_STORE" in md          # deprecated-schema note
-    assert "ANALYTICS" in md           # layer table
+    assert "LEGACY_STORE" in md         # deprecated-schema note
+    assert "MARTS" in md                # layer table
 
 
 def test_session_start_emits_only_inside_repo(tmp_path):

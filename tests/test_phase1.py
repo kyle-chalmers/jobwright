@@ -14,24 +14,24 @@ FIXTURE = REPO / "examples" / "sample-databricks"
 def test_policy_flags_deprecated_schema():
     from jobwright.policy import ArchitecturePolicy
 
-    pol = ArchitecturePolicy(deprecated_deny=["DATA_STORE", "CRON_STORE"], replace_hints={"DATA_STORE": "ANALYTICS.VW_LOAN"})
-    findings = pol.scan_text("SELECT * FROM DATA_STORE.MVW_LOAN_TAPE\n", "x.sql")
+    pol = ArchitecturePolicy(deprecated_deny=["LEGACY_STORE", "OLD_REPORTS"], replace_hints={"LEGACY_STORE": "MARTS.NEW_VIEW"})
+    findings = pol.scan_text("SELECT * FROM LEGACY_STORE.OLD_TABLE\n", "x.sql")
     assert len(findings) == 1
     assert findings[0].kind == "deprecated"
-    assert findings[0].schema == "DATA_STORE"
-    assert "ANALYTICS.VW_LOAN" in findings[0].message  # replacement hint surfaced
+    assert findings[0].schema == "LEGACY_STORE"
+    assert "MARTS.NEW_VIEW" in findings[0].message  # replacement hint surfaced
 
 
 def test_policy_flags_layer_violation_only_when_layer_declared():
     from jobwright.policy import ArchitecturePolicy
 
-    pol = ArchitecturePolicy(layer_rules={"ANALYTICS": ["BRIDGE", "ANALYTICS"]})
+    pol = ArchitecturePolicy(layer_rules={"MARTS": ["STAGING", "MARTS"]})
     # job declares its layer and references a forbidden upstream schema
-    text = "# LAYER: ANALYTICS\nSELECT * FROM RAW_DATA_STORE.EVENTS\n"
+    text = "# LAYER: MARTS\nSELECT * FROM RAW.EVENTS\n"
     findings = pol.scan_text(text, "x.py")
-    assert any(f.kind == "layer-violation" and f.schema == "RAW_DATA_STORE" for f in findings)
+    assert any(f.kind == "layer-violation" and f.schema == "RAW" for f in findings)
     # no layer declared -> no layer-violation false positive
-    assert not [f for f in pol.scan_text("SELECT * FROM RAW_DATA_STORE.EVENTS\n", "y.py") if f.kind == "layer-violation"]
+    assert not [f for f in pol.scan_text("SELECT * FROM RAW.EVENTS\n", "y.py") if f.kind == "layer-violation"]
 
 
 def test_policy_ignores_python_imports():
