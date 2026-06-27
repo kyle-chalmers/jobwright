@@ -1,9 +1,7 @@
 # Job: {{ ticket }} {{ name }}
-**Ticket**: {{ ticket }}
-**Purpose**: TODO — one-line business purpose
-**Schedule**: TODO — human-readable (the cron lives in the job definition)
-**Business Owner**: TODO — owning team
-
+{% for f in cfg.governance.claude_md_required -%}
+**{{ f }}**: TODO
+{% endfor %}
 ## Overview
 TODO — what this job does and why.
 
@@ -19,7 +17,7 @@ TODO — what this job does and why.
 ## Architecture Compliance
 - DATA_STORE usage: none
 - CRON_STORE usage: none
-- Layer: TODO (e.g. ANALYTICS)
+- Layer: TODO
 
 ## Known Issues
 - None yet.

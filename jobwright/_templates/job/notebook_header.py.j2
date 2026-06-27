@@ -1,16 +1,14 @@
-# JOB: {{ ticket }} {{ name }}
-# TICKET: {{ ticket }}
-# PURPOSE: TODO — one-line business purpose
-# SCHEDULE: TODO
-# DEPENDENCIES: TODO
-# OUTPUTS: TODO
-# EXTERNAL_SYSTEMS: TODO
-# OWNER: TODO
-# LAST_UPDATED: {{ today }}
-# STATUS: TESTING
+{% for f in cfg.governance.header_required -%}
+{% if f == "JOB" %}# JOB: {{ ticket }} {{ name }}
+{% elif f == "TICKET" %}# TICKET: {{ ticket }}
+{% elif f == "LAST_UPDATED" %}# LAST_UPDATED: {{ today }}
+{% else %}# {{ f }}: TODO
+{% endif %}{% endfor -%}
+{% if "OWNER" not in cfg.governance.header_required %}# OWNER: TODO
+{% endif -%}
+{% if "LAST_UPDATED" not in cfg.governance.header_required %}# LAST_UPDATED: {{ today }}
+{% endif -%}
 # ARCHITECTURE_COMPLIANCE: DATA_STORE=none CRON_STORE=none
-# BUSINESS_CONTEXT: TODO
-# TROUBLESHOOTING: TODO
 
 """{{ ticket }} {{ name }}.
 

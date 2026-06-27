@@ -11,11 +11,13 @@ CFG="$ROOT/jobwright.config.yaml"
 echo "jobwright repo detected. Skills: /build-jobs-index /validate-job /architecture-audit /scaffold-job /document-job /safe-deploy /triage-failure /onboard. CLI: jobwright doctor | jobs-index | validate-job <folder> | check architecture <path> | diff-job <job>."
 
 # Catalog summary, if the index has been generated (cheap: read two header lines).
-JOBS_MD="$ROOT/$(grep -E '^[[:space:]]*jobs_dir:' "$CFG" 2>/dev/null | head -1 | sed -E 's/.*jobs_dir:[[:space:]]*//; s/[[:space:]]*$//' | tr -d '"'"'"'')"
-JOBS_MD="${JOBS_MD%/}/JOBS.md"
+# `|| true` guards each pipeline so a no-match grep can't trip `set -e`/pipefail.
+JOBS_DIR="$(grep -E '^[[:space:]]*jobs_dir:' "$CFG" 2>/dev/null | head -1 | sed -E 's/.*jobs_dir:[[:space:]]*//; s/[[:space:]]*$//' | tr -d "\"'" || true)"
+[ -n "$JOBS_DIR" ] || JOBS_DIR="jobs"
+JOBS_MD="$ROOT/${JOBS_DIR%/}/JOBS.md"
 if [ -f "$JOBS_MD" ]; then
-  SUMMARY="$(grep -E '^\*\*[0-9]+ jobs\*\*' "$JOBS_MD" 2>/dev/null | head -1 | sed -E 's/\*\*//g')"
-  COVERAGE="$(grep -E '^Coverage:' "$JOBS_MD" 2>/dev/null | head -1)"
+  SUMMARY="$(grep -E '^\*\*[0-9]+ jobs\*\*' "$JOBS_MD" 2>/dev/null | head -1 | sed -E 's/\*\*//g' || true)"
+  COVERAGE="$(grep -E '^Coverage:' "$JOBS_MD" 2>/dev/null | head -1 || true)"
   [ -n "$SUMMARY" ] && echo "Catalog: $SUMMARY. ${COVERAGE:-} Read JOBS.md / OBJECTS.md and recall prior work before building."
 fi
 
