@@ -8,22 +8,21 @@ Makes two prose-only rules mechanical, so they hold even when the agent forgets:
    ``prefect deployment delete``, ``DROP TASK``) require human confirmation. The
    patterns come from the *active platform adapter* (single source of truth):
    ``jobwright.platforms.destructive_patterns_for(kind)``. The ``jobs reset`` case
-   carries the stale-JSON incident guidance — a reset from a stale repo JSON has
-   overwritten correct live state and broken production jobs.
+   carries the stale-JSON incident guidance.
 
 2. **Warehouse writes** — a warehouse CLI (``snow``/``bq``/``psql``/…) carrying a
-   destructive SQL statement (CREATE/ALTER/DROP/DELETE/UPDATE/INSERT/TRUNCATE/
-   MERGE/GRANT/REVOKE) requires confirmation, including SQL hidden in a ``-f`` file
-   or a ``< file`` stdin redirect.
+   destructive SQL statement requires confirmation, including SQL hidden in a
+   ``-f`` file or a ``< file`` stdin redirect.
 
-Read-only commands pass straight through. The hook is **repo-gated** (does nothing
-unless a ``jobwright.config.yaml`` is found, so it is zero-cost in unrelated repos),
-**stdlib-only**, and **fail-open** — it never crashes a session and only ever *adds*
-a confirmation, never bypasses one.
+The matcher defends against shell-quote evasion (``data'bricks' jobs reset``) and
+full-path invocations (``/usr/local/bin/snow``). When a referenced SQL file is too
+large to scan, the hook asks rather than letting it pass unseen. It errs toward an
+extra confirmation (a command that merely *mentions* a destructive word may get a
+prompt) — a guard should over-ask, never under-ask.
 
-Wire it (plugin): hooks/hooks.json -> PreToolUse/Bash -> this script.
-Wire it (in-repo): .claude/settings.json -> PreToolUse/Bash ->
-  python3 .claude/hooks/deploy_safety.py
+Repo-gated (does nothing unless a ``jobwright.config.yaml`` is found, so it is
+zero-cost in unrelated repos), stdlib-only, and fail-open — it never crashes a
+session and only ever *adds* a confirmation, never bypasses one.
 """
 
 from __future__ import annotations
@@ -36,7 +35,6 @@ from pathlib import Path
 
 CONFIG_FILENAME = "jobwright.config.yaml"
 
-# Warehouse CLIs that may carry destructive SQL.
 WAREHOUSE_CLIS = ["snow", "snowsql", "bq", "dbsqlcli", "psql", "mysql", "sqlcmd", "duckdb", "redshift-data"]
 
 DESTRUCTIVE_SQL = re.compile(
@@ -73,6 +71,13 @@ EMBEDDED_DEFAULTS: dict[str, list[dict[str, str]]] = {
 # SQL can live in a file (-f/--file) or a stdin redirect (`psql db < deploy.sql`).
 _FILE_FLAG = re.compile(r"(?:-f|-i|--file|--filename|--input-file|--query)[=\s]+([^\s;|&]+)")
 _STDIN_REDIR = re.compile(r"<\s*([^\s;|&<>]+)")
+_MAX_SCAN_BYTES = 2_000_000
+
+
+def _dequote(command: str) -> str:
+    """Remove shell quote characters so `data'bricks' jo"bs" reset` matches a pattern.
+    Used for pattern matching only — never for opening files."""
+    return command.replace("'", "").replace('"', "")
 
 
 def find_config(cwd: str) -> Path | None:
@@ -95,21 +100,29 @@ def find_config(cwd: str) -> Path | None:
 
 
 def platform_kind(config_path: Path) -> str:
-    """Read platform.kind via a tiny regex scan (no yaml dependency)."""
+    """Resolve platform.kind. Prefer a real YAML parse (handles inline mappings);
+    fall back to a regex scan if PyYAML isn't importable in this interpreter."""
     try:
         text = config_path.read_text(errors="replace")
     except OSError:
         return ""
+    try:
+        import yaml  # may be absent in a bare hook interpreter
+
+        data = yaml.safe_load(text) or {}
+        kind = (data.get("platform") or {}).get("kind")
+        if isinstance(kind, str) and kind:
+            return kind
+    except Exception:
+        pass
     m = re.search(r"^\s*platform:\s*.*?\n(?:\s+.*\n)*?\s+kind:\s*([A-Za-z0-9_]+)", text, re.MULTILINE)
     if m:
         return m.group(1)
-    # looser fallback: any `kind:` line
-    m = re.search(r"^\s*kind:\s*([A-Za-z0-9_]+)", text, re.MULTILINE)
+    m = re.search(r"\bkind\s*:\s*[\"']?([A-Za-z0-9_]+)", text)  # inline-mapping / loose fallback
     return m.group(1) if m else ""
 
 
 def destructive_patterns(kind: str) -> list[dict[str, str]]:
-    """Prefer the installed package's adapter declarations; fall back to embedded."""
     try:
         from jobwright.platforms import destructive_patterns_for  # type: ignore
 
@@ -123,23 +136,36 @@ def destructive_patterns(kind: str) -> list[dict[str, str]]:
 
 def invokes_warehouse(command: str) -> str | None:
     for cli in WAREHOUSE_CLIS:
-        if re.search(rf"(^|[\s;&|(]){re.escape(cli)}(\s|$)", command):
+        # allow a path prefix (/usr/local/bin/snow) by treating '/' as a boundary
+        if re.search(rf"(^|[\s;&|(/]){re.escape(cli)}(\s|$)", command):
             return cli
     return None
 
 
-def referenced_sql(command: str, cwd: str) -> str:
+def referenced_sql(command: str, cwd: str) -> tuple[str, bool]:
+    """Return (concatenated SQL text from -f/--file/< files, unscannable_flag).
+
+    unscannable is True if a referenced file exists but is too large to read — the
+    caller treats that as a reason to ask, since we can't prove it's safe.
+    """
     text = ""
+    unscannable = False
     for raw in _FILE_FLAG.findall(command) + _STDIN_REDIR.findall(command):
+        raw = raw.strip("'\"")  # `-f "deploy.sql"` -> deploy.sql
+        if not raw:
+            continue
         p = Path(raw)
         if not p.is_absolute() and cwd:
             p = Path(cwd) / raw
         try:
-            if p.is_file() and p.stat().st_size < 1_000_000:
-                text += "\n" + p.read_text(errors="replace")
+            if p.is_file():
+                if p.stat().st_size <= _MAX_SCAN_BYTES:
+                    text += "\n" + p.read_text(errors="replace")
+                else:
+                    unscannable = True
         except OSError:
             continue
-    return text
+    return text, unscannable
 
 
 def emit_ask(reason: str) -> None:
@@ -168,20 +194,23 @@ def main() -> int:
     if config_path is None:
         return 0  # not a jobwright repo — zero cost
 
+    dequoted = _dequote(command)
+
     # 1) Platform-destructive commands (from the active adapter).
     kind = platform_kind(config_path)
     for pat in destructive_patterns(kind):
         try:
-            if re.search(pat["pattern"], command, re.IGNORECASE):
+            if re.search(pat["pattern"], dequoted, re.IGNORECASE):
                 emit_ask(f"jobwright deploy-safety [{kind}]: {pat['reason']}")
                 return 0
         except re.error:
             continue
 
     # 2) Warehouse writes (destructive SQL via a warehouse CLI, incl. -f / stdin).
-    cli = invokes_warehouse(command)
+    cli = invokes_warehouse(dequoted)
     if cli:
-        scan_text = command + referenced_sql(command, cwd)
+        sql_text, unscannable = referenced_sql(command, cwd)
+        scan_text = dequoted + _dequote(sql_text)
         m = DESTRUCTIVE_SQL.search(scan_text)
         if m:
             verb = m.group(1).upper()
@@ -189,6 +218,12 @@ def main() -> int:
                 f"jobwright deploy-safety: this `{cli}` command contains a destructive SQL "
                 f"statement ({verb}). Show the exact SQL and target environment, and proceed "
                 f"only on explicit approval."
+            )
+            return 0
+        if unscannable:
+            emit_ask(
+                f"jobwright deploy-safety: this `{cli}` command runs a SQL file too large to scan "
+                f"({_MAX_SCAN_BYTES} byte cap). Confirm it contains no destructive statements before running."
             )
             return 0
 

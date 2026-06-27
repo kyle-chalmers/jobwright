@@ -57,10 +57,18 @@ def validate(job_dir: Path, cfg, offline: bool = False, root: Path | None = None
     ticket = _ticket_of(job_dir, cfg.project.key_prefixes)
     def_files = _def_files_for(ticket, cfg, root)
     def_errs = [e for f in def_files if (e := validate_job_definitions.check_file(str(f), deployable or validate_job_definitions.DEFAULT_DEPLOYABLE_DIRS))]
+    # on api-reset / sql-ddl platforms a deployed job MUST have a repo definition;
+    # git-sync platforms (code is the source of truth) legitimately have none.
+    requires_def = cfg.platform.deploy_model in ("api-reset", "sql-ddl")
+    missing_required = requires_def and not def_files
     checks.append({
         "name": "job_definitions",
-        "ok": not def_errs,
-        "detail": def_errs or (f"{len(def_files)} def file(s) OK" if def_files else f"no job-def JSON found for {ticket}"),
+        "ok": (not def_errs) and not missing_required,
+        "detail": def_errs or (
+            f"{len(def_files)} def file(s) OK" if def_files
+            else (f"REQUIRED job-def JSON missing for {ticket} (deploy_model={cfg.platform.deploy_model})"
+                  if requires_def else f"no job-def JSON (not required for {cfg.platform.deploy_model})")
+        ),
     })
 
     # 3) dependency vulns (network — skippable)

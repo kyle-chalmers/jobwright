@@ -50,7 +50,7 @@ def settings_from_config(cfg) -> dict:
         "key_prefixes": list(cfg.project.key_prefixes),
         "def_dirs": prod_dirs or all_dirs,
         "deprecated_deny": list(cfg.architecture.deprecated_schema_deny),
-        "ticket_url_template": (cfg.raw.get("project") or {}).get("ticket_url_template"),
+        "ticket_url_template": cfg.project.ticket_url_template or None,
     }
 
 
@@ -147,11 +147,13 @@ def find_prod_def(ticket: str, def_dirs: list[Path]) -> dict:
 
 
 def arch_flags(job_dir: Path, deny: list[str]) -> list[str]:
-    """Deprecated-schema references found in the job's SQL/py (the migration dashboard)."""
+    """Deprecated-schema references found in the job's SQL/py (the migration dashboard).
+    Case-insensitive match; output normalized to the configured term form."""
     if not deny:
         return []
+    deny_map = {s.upper(): s for s in deny}
     found: set[str] = set()
-    pat = re.compile(r"\b(" + "|".join(re.escape(s) for s in deny) + r")\b")
+    pat = re.compile(r"\b(" + "|".join(re.escape(s) for s in deny) + r")\b", re.IGNORECASE)
     for ext in ("*.py", "*.sql"):
         for f in sorted(job_dir.rglob(ext)):
             try:
@@ -159,7 +161,7 @@ def arch_flags(job_dir: Path, deny: list[str]) -> list[str]:
             except OSError:
                 continue
             for m in pat.findall(txt):
-                found.add(m)
+                found.add(deny_map.get(str(m).upper(), str(m)))
     return sorted(found)
 
 
@@ -222,7 +224,8 @@ def build_rows(root: Path, settings: dict) -> list[dict]:
 
         name = entry.get("name") or cm.get("name") or prod.get("name") or d.name
         purpose = entry.get("summary") or cm.get("purpose") or "—"
-        schedule = cm.get("schedule") or prod.get("cron") or "—"
+        # prefer the authoritative prod-JSON cron over possibly-stale claude.md prose
+        schedule = prod.get("cron") or cm.get("schedule") or "—"
         owner = entry.get("owner") or cm.get("owner") or "—"
         status = (hdr.get("STATUS") or cm.get("status") or entry.get("status") or "Unknown").strip()
         last_updated = hdr.get("LAST_UPDATED") or entry.get("date") or "—"

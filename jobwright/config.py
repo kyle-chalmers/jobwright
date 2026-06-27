@@ -123,16 +123,25 @@ class ProjectCfg:
     name: str
     key_prefixes: tuple[str, ...]
     jobs_dir: str = "jobs"
+    ticket_url_template: str = ""
 
     @classmethod
     def from_dict(cls, d: dict) -> ProjectCfg:
         prefixes = tuple(
             validate_name(str(p), "project.key_prefixes[]") for p in (d.get("key_prefixes") or [])
         )
+        tmpl = str(d.get("ticket_url_template", "") or "")
+        # rendered into Markdown links, so constrain it: http(s), a {id} slot, no spaces/quotes.
+        if tmpl and (not re.match(r"^https?://[^\s\"'<>]+$", tmpl) or "{id}" not in tmpl):
+            raise ConfigError(
+                f"project.ticket_url_template = {tmpl!r} must be an http(s) URL containing '{{id}}' "
+                "and no spaces/quotes."
+            )
         return cls(
             name=str(d.get("name", "")),
             key_prefixes=prefixes,
             jobs_dir=validate_relpath(str(d.get("jobs_dir", "jobs")), "project.jobs_dir"),
+            ticket_url_template=tmpl,
         )
 
 

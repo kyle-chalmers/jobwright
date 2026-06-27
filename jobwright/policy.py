@@ -22,10 +22,17 @@ from dataclasses import dataclass
 # Qualified SQL object refs. Keyword-anchored for precision: matches
 # `FROM schema.obj` / `JOIN db.schema.obj` even inside a SQL string in a .py file,
 # but not `os.path.join` / `df.merge` (no FROM/JOIN/... keyword precedes them).
+# Identifier parts may be bare, "double-quoted" (Snowflake/ANSI), or `backticked`
+# (BigQuery); quotes are stripped before evaluation.
 SQL_OBJECT = re.compile(
-    r"(?i)\b(?:from|join|into|update|table|view)\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w+){1,2})"
+    r'(?i)\b(?:from|join|into|update|merge\s+into|delete\s+from|table|view)\s+'
+    r'([`"]?[A-Za-z_]\w*[`"]?(?:\.[`"]?[A-Za-z_]\w*[`"]?){1,2})'
 )
 PY_IMPORT = re.compile(r"^\s*(?:from\s+\S+\s+import\b|import\s)")
+
+
+def _strip_quotes(ref: str) -> str:
+    return ref.replace("`", "").replace('"', "")
 LAYER_DECL = re.compile(r"^\s*#\s*LAYER\s*[:=]\s*([A-Za-z_][A-Za-z0-9_$]*)", re.MULTILINE)
 
 
@@ -79,7 +86,8 @@ class ArchitecturePolicy:
         for lineno, line in enumerate(text.splitlines(), start=1):
             if PY_IMPORT.match(line):
                 continue
-            for ref in SQL_OBJECT.findall(line):
+            for raw_ref in SQL_OBJECT.findall(line):
+                ref = _strip_quotes(raw_ref)
                 if ref.upper() in self.read_exceptions:
                     continue
                 parts = [p.upper() for p in ref.split(".")]
