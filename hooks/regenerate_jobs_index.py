@@ -67,9 +67,13 @@ def main() -> int:
 
     try:
         norm = Path(fp).resolve()
+        jobs_root = (root / jobs_dir).resolve()
     except OSError:
         return 0
-    if f"/{jobs_dir}/" not in (str(norm) + "/"):
+    # the edited file must be genuinely under THIS repo's jobs dir (no substring confusion)
+    try:
+        norm.relative_to(jobs_root)
+    except ValueError:
         return 0
     if norm.name in GENERATED:
         return 0

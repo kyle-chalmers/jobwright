@@ -231,9 +231,14 @@ def gen_agents_cmd(
     from .scaffolder import render_agents_md
 
     cfg, root = _load()
-    out = root / output
+    out = (root / output).resolve()
+    try:
+        out.relative_to(root.resolve())
+    except ValueError:
+        typer.secho(f"--output must stay within the repo (got {output!r}).", fg=typer.colors.RED)
+        raise typer.Exit(2) from None
     out.write_text(render_agents_md(cfg))
-    typer.secho(f"Wrote {output} from jobwright.config.yaml.", fg=typer.colors.GREEN)
+    typer.secho(f"Wrote {out.relative_to(root.resolve())} from jobwright.config.yaml.", fg=typer.colors.GREEN)
 
 
 check_app = typer.Typer(no_args_is_help=True, help="Run a single generic check (file-based; no platform calls).")
