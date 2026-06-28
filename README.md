@@ -1,5 +1,11 @@
 # jobwright
 
+[![CI](https://github.com/kyle-chalmers/jobwright/actions/workflows/ci.yml/badge.svg)](https://github.com/kyle-chalmers/jobwright/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/jobwright.svg)](https://pypi.org/project/jobwright/)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+
 **An open-source AI layer for governing, validating, and safely shipping data-orchestration jobs with Claude Code.**
 
 jobwright treats your *jobs* — Databricks Jobs, Airflow DAGs, dbt jobs, Snowflake Tasks — as deployable artifacts that deserve a governed lifecycle: a catalog you can recall before you rebuild, architecture-compliance scanning, a per-job validation gate, and a deploy-safety guard that prompts for confirmation before known destructive commands (so a stale-definition overwrite can't happen unattended).

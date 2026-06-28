@@ -40,6 +40,15 @@ All org-specific values belong in a consumer's own `jobwright.config.yaml`, neve
 
 ## 4. Release
 
-- PyPI: `python -m build && twine upload dist/*`.
-- Plugin marketplace: tag the repo; consumers run
-  `/plugin marketplace add kyle-chalmers/jobwright` → `/plugin install jobwright@jobwright`.
+CI (`.github/workflows/ci.yml`) runs lint + tests on every push/PR. Releases:
+
+1. **GitHub release** — `gh release create vX.Y.Z --title vX.Y.Z --notes-from-tag` (or from
+   `CHANGELOG.md`). The tag/release is the source of truth for the version.
+2. **PyPI** via Trusted Publishing (no stored token) — one-time setup, then publish:
+   - On PyPI, register a Trusted Publisher for project `jobwright`: owner `kyle-chalmers`,
+     repo `jobwright`, workflow `publish.yml`, environment `pypi`.
+   - Run the **Publish to PyPI** workflow (Actions tab → Run workflow), or switch its trigger
+     to `release: [published]` so it fires automatically on each GitHub release.
+   - `pip install jobwright` / `uvx jobwright` then work everywhere.
+3. **Claude Code plugin** — already live from the repo: consumers run
+   `/plugin marketplace add kyle-chalmers/jobwright` → `/plugin install jobwright@jobwright`.
