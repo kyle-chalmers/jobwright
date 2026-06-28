@@ -1,0 +1,18 @@
+# Example: an Airflow + BigQuery repo (git-sync — code is the source of truth).
+schema_version: 1
+project:
+  name: "Acme Airflow Jobs"
+  key_prefixes: ["DAG"]
+  jobs_dir: dags
+platform:
+  kind: airflow
+  deploy_model: git-sync
+  dags_dir: dags
+warehouse:
+  dialect: bigquery
+architecture:
+  layers: [raw, staging, marts]
+  layer_rules:
+    staging: [raw, staging]
+    marts: [staging, marts]
+  deprecated_schema_deny: [legacy_dataset]
