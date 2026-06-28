@@ -1,0 +1,32 @@
+name: Publish to PyPI
+
+# Manual trigger so cutting a GitHub release never auto-fails before PyPI is configured.
+# After registering the PyPI Trusted Publisher (see docs/PUBLISHING.md), run this workflow
+# from the Actions tab (or switch the trigger to `release: [published]`).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write  # OIDC for PyPI Trusted Publishing — no API token stored
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build sdist + wheel
+        run: |
+          pip install build
+          python -m build
+
+      - name: Publish to PyPI (Trusted Publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
