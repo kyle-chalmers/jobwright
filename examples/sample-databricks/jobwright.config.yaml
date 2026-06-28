@@ -1,0 +1,48 @@
+# jobwright.config.yaml — the single source of truth. Copy to your repo root and edit.
+# SECRETS NEVER GO HERE — only names/profiles. Values flow into generated artifacts
+# and shell hints, so identifiers/choices are validated to a safe charset.
+
+schema_version: 1
+
+project:
+  name: "Acme Data Jobs"
+  key_prefixes: ["JOB"]            # folder/ticket prefixes, e.g. JOB-123_My_Job
+  jobs_dir: jobs
+  # ticket_url_template: "https://acme.atlassian.net/browse/{id}"
+
+# --- platform seam: the orchestrator a job RUNS ON --------------------------
+platform:
+  kind: databricks                 # databricks | airflow | dbt | dagster | prefect | snowflake_tasks | glue | adf
+  profile: prod                    # CLI profile NAME (never a token/secret)
+  deploy_model: api-reset          # api-reset | git-sync | sql-ddl
+  job_def_dirs:                    # api-reset / sql-ddl platforms keep definitions in the repo
+    dev: databricks/job_definitions/dev
+    prod: databricks/job_definitions/prod
+  # dags_dir: dags/                # git-sync platforms (Airflow / dbt-core) use this instead
+
+# --- warehouse seam: the store a job READS/WRITES (static policy only) -------
+warehouse:
+  dialect: snowflake               # snowflake | bigquery | redshift | postgres | databricks-sql | none
+
+architecture:                      # schema-reference compliance scan (no DB connection)
+  layers: [RAW, STAGING, ANALYTICS, REPORTING]
+  layer_rules:                     # each layer may only reference these (forbid upstream refs)
+    STAGING:   [RAW, STAGING]
+    ANALYTICS: [STAGING, ANALYTICS]
+    REPORTING: [STAGING, ANALYTICS, REPORTING]
+  deprecated_schema_deny: [LEGACY_STORE]   # references to these are flagged as migration debt
+  # read_exceptions: [ANALYTICS.PUBLIC.SOME_VIEW]   # sanctioned exact-FQN bypasses
+
+# -----------------------------------------------------------------------------
+# Example B — an Airflow + BigQuery repo (git-sync; code is the source of truth):
+#
+#   platform:
+#     kind: airflow
+#     deploy_model: git-sync
+#     dags_dir: dags
+#   warehouse:
+#     dialect: bigquery
+#   architecture:
+#     layers: [raw, staging, marts]
+#     layer_rules: { staging: [raw, staging], marts: [staging, marts] }
+#     deprecated_schema_deny: [legacy_dataset]
