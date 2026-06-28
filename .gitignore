@@ -17,6 +17,7 @@ venv/
 # OS
 .DS_Store
 
-# Never commit a real, org-specific config into the OSS repo.
-# The example lives at jobwright.config.example.yaml.
-jobwright.config.yaml
+# Never commit a real, org-specific config at the repo root.
+# Root-anchored so the example fixtures under examples/ ARE tracked.
+# The documented template lives at jobwright.config.example.yaml.
+/jobwright.config.yaml
