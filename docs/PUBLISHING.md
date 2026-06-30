@@ -17,7 +17,7 @@ necessarily contains the search terms as its pattern):
 
 ```bash
 # from the jobwright repo root — every hit is a blocker
-git grep -niE '|legacy_store|legacy_jobs|job_automation|monitor.?bot|\
+git grep -niE 'legacy_store|legacy_jobs|job_automation|monitor.?bot|\
 xoxb-|REGION|REDACTED-ACCOUNT-ID|REDACTED-ACCOUNT-ID|C0[0-9A-Z]{8,}' \
   -- ':(exclude)docs/PUBLISHING.md'
 ```
