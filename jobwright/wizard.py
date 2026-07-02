@@ -14,6 +14,7 @@ take the detected proposal as-is — degrade to a sensible default, don't die.
 from __future__ import annotations
 
 import configparser
+import os
 import re
 import shutil
 from dataclasses import dataclass, field
@@ -38,6 +39,28 @@ DEPLOY_MODEL_BY_KIND: dict[str, str] = {
 
 _JOB_FOLDER_RE = re.compile(r"^([A-Za-z][A-Za-z0-9]*)-\d+_")
 _MAX_SQL_PROBE = 40  # files to sniff for CREATE TASK before giving up
+_SQL_PROBE_BYTES = 65536  # sniff the head only — never read a whole SQL dump
+_MAX_WALK_DIRS = 4000  # directories visited before detection gives up (init must stay fast)
+# never descend into these — detection would drown in vendored/derived trees
+_SKIP_DIRS = {
+    "node_modules", "__pycache__", "venv", "dist", "build", "target",
+    ".git", ".venv", ".tox", ".mypy_cache", ".ruff_cache", ".pytest_cache",
+}
+
+
+def _repo_scan(root: Path) -> tuple[list[Path], list[Path]]:
+    """One bounded, vendor-pruned walk: job_definitions dirs + the first .sql files."""
+    job_defs: list[Path] = []
+    sql_files: list[Path] = []
+    for visited, (dirpath, dirnames, filenames) in enumerate(os.walk(root)):
+        dirnames[:] = sorted(d for d in dirnames if d not in _SKIP_DIRS and not d.startswith("."))
+        here = Path(dirpath)
+        job_defs.extend(here / d for d in dirnames if d == "job_definitions")
+        if len(sql_files) < _MAX_SQL_PROBE:
+            sql_files.extend(here / f for f in sorted(filenames) if f.endswith(".sql"))
+        if visited >= _MAX_WALK_DIRS:
+            break
+    return job_defs, sql_files[:_MAX_SQL_PROBE]
 
 
 @dataclass
@@ -54,7 +77,7 @@ class Detection:
     warehouse: str = ""
 
 
-def _sniff_platform(root: Path, home: Path) -> tuple[str, list[str]]:
+def _sniff_platform(root: Path, home: Path, job_defs: list[Path], sql_files: list[Path]) -> tuple[str, list[str]]:
     """Rank platform signals: files in the repo beat CLIs on PATH."""
     scores: dict[str, int] = {}
     evidence: dict[str, list[str]] = {}
@@ -75,18 +98,19 @@ def _sniff_platform(root: Path, home: Path) -> tuple[str, list[str]]:
             if "airflow" in text or re.search(r"\bDAG\s*\(", text):
                 hit("airflow", 3, f"DAG code in {py.relative_to(root)}")
                 break
-    if list(root.glob("**/job_definitions"))[:1]:
+    if job_defs:
         hit("databricks", 3, "a job_definitions/ dir in the repo")
     if (root / "databricks").is_dir() or (root / "databricks.yml").is_file():
         hit("databricks", 2, "databricks/ in repo root")
-    sql_files = [p for p in sorted(root.rglob("*.sql"))[:_MAX_SQL_PROBE]]
     for sql in sql_files:
         try:
-            if re.search(r"\bCREATE\s+(OR\s+REPLACE\s+)?TASK\b", sql.read_text(errors="replace"), re.I):
-                hit("snowflake_tasks", 3, f"CREATE TASK in {sql.relative_to(root)}")
-                break
+            with sql.open(errors="replace") as fh:
+                head = fh.read(_SQL_PROBE_BYTES)
         except OSError:
             continue
+        if re.search(r"\bCREATE\s+(OR\s+REPLACE\s+)?TASK\b", head, re.I):
+            hit("snowflake_tasks", 3, f"CREATE TASK in {sql.relative_to(root)}")
+            break
     if (home / ".databrickscfg").is_file():
         hit("databricks", 1, "~/.databrickscfg present")
     for binary, kind in (("databricks", "databricks"), ("airflow", "airflow"), ("dbt", "dbt"), ("snow", "snowflake_tasks")):
@@ -134,8 +158,8 @@ def _sniff_jobs_dir(root: Path) -> tuple[str, list[str]]:
     return "jobs", []
 
 
-def _sniff_job_def_dirs(root: Path) -> dict[str, str]:
-    for defs in sorted(root.glob("**/job_definitions")):
+def _sniff_job_def_dirs(root: Path, job_defs: list[Path]) -> dict[str, str]:
+    for defs in sorted(job_defs):
         if not defs.is_dir():
             continue
         envs = {c.name: str(c.relative_to(root)) for c in sorted(defs.iterdir()) if c.is_dir()}
@@ -157,7 +181,8 @@ def _sniff_warehouse(kind: str, home: Path) -> str:
 
 def detect(root: Path, home: Path | None = None) -> Detection:
     home = home or Path.home()
-    kind, evidence = _sniff_platform(root, home)
+    job_defs, sql_files = _repo_scan(root)
+    kind, evidence = _sniff_platform(root, home, job_defs, sql_files)
     jobs_dir, prefixes = _sniff_jobs_dir(root)
     return Detection(
         platform=kind,
@@ -165,7 +190,7 @@ def detect(root: Path, home: Path | None = None) -> Detection:
         profile=_sniff_profile(kind, home) if kind else "",
         jobs_dir=jobs_dir or "jobs",
         key_prefixes=prefixes,
-        job_def_dirs=_sniff_job_def_dirs(root),
+        job_def_dirs=_sniff_job_def_dirs(root, job_defs),
         dags_dir="dags" if (root / "dags").is_dir() else "",
         warehouse=_sniff_warehouse(kind, home),
     )

@@ -191,13 +191,29 @@ def diff_job(
     raise typer.Exit(1)
 
 
+def _ask(label: str, default: str, check) -> str:
+    """Prompt until the answer passes validation — a typo re-asks instead of aborting the wizard."""
+    while True:
+        value = typer.prompt(label, default=default)
+        try:
+            return check(value)
+        except ConfigError as exc:
+            typer.secho(f"  {exc}", fg=typer.colors.RED)
+
+
 @app.command()
 def init(
     yes: bool = typer.Option(False, "--yes", "-y", help="accept the detected proposal, ask nothing"),
     force: bool = typer.Option(False, "--force", help="replace an existing jobwright.config.yaml"),
 ) -> None:
     """Set up jobwright here — detect your platform, ask at most 5 questions, write a validated config."""
-    from .config import PLATFORM_KINDS, WAREHOUSE_DIALECTS
+    from .config import (
+        PLATFORM_KINDS,
+        WAREHOUSE_DIALECTS,
+        validate_choice,
+        validate_name,
+        validate_relpath,
+    )
     from .wizard import DEPLOY_MODEL_BY_KIND, compose_config, detect, validate_config_text
 
     existing = find_config()
@@ -210,7 +226,11 @@ def init(
         )
         raise typer.Exit(0)
 
-    root = Path.cwd()
+    # --force replaces the config where it actually lives: running from a subdirectory
+    # must not leave a second config in cwd shadowing the real one for this subtree.
+    root = existing.parent if existing is not None else Path.cwd()
+    if root != Path.cwd():
+        typer.echo(f"(replacing the existing config at {existing})")
     det = detect(root)
     if det.evidence:
         typer.secho(f"Detected platform: {det.platform}", fg=typer.colors.GREEN)
@@ -224,23 +244,34 @@ def init(
     profile, jobs_dir, warehouse = det.profile, det.jobs_dir, det.warehouse
     prefixes = det.key_prefixes or ["JOB"]
     if interactive:
-        # The whole interview: 5 questions, every answer pre-filled from detection.
-        kind = typer.prompt(f"1/5 Platform ({' | '.join(PLATFORM_KINDS)})", default=kind)
-        if kind not in PLATFORM_KINDS:
-            typer.secho(
-                f"'{kind}' is not a platform jobwright knows ({', '.join(PLATFORM_KINDS)}).",
-                fg=typer.colors.RED,
-            )
-            raise typer.Exit(2)
+        # The whole interview: 5 questions, every answer pre-filled from detection and
+        # validated on the spot (a bad answer re-asks that question, not the wizard).
+        kind = _ask(
+            f"1/5 Platform ({' | '.join(PLATFORM_KINDS)})", kind,
+            lambda v: validate_choice(v, PLATFORM_KINDS, "platform.kind"),
+        )
         if DEPLOY_MODEL_BY_KIND[kind] == "git-sync":
             typer.echo("2/5 CLI profile — skipped (git-synced platform: git is the source of truth).")
         else:
-            profile = typer.prompt("2/5 Platform CLI profile name (never a token)", default=profile or "prod")
-        jobs_dir = typer.prompt("3/5 Jobs directory (one governed folder per job)", default=jobs_dir)
-        raw = typer.prompt("4/5 Ticket key prefix(es), comma-separated", default=",".join(prefixes))
-        prefixes = [p.strip() for p in raw.split(",") if p.strip()]
-        warehouse = typer.prompt(
-            f"5/5 Warehouse dialect ({' | '.join(WAREHOUSE_DIALECTS)})", default=warehouse or "none"
+            profile = _ask(
+                "2/5 Platform CLI profile name (never a token)", profile or "prod",
+                lambda v: validate_name(v, "platform.profile"),
+            )
+        jobs_dir = _ask(
+            "3/5 Jobs directory (one governed folder per job)", jobs_dir,
+            lambda v: validate_relpath(v, "project.jobs_dir"),
+        )
+
+        def _check_prefixes(raw: str) -> list[str]:
+            parts = [p.strip() for p in raw.split(",") if p.strip()]
+            if not parts:
+                raise ConfigError("give at least one prefix, e.g. JOB")
+            return [validate_name(p, "project.key_prefixes[]") for p in parts]
+
+        prefixes = _ask("4/5 Ticket key prefix(es), comma-separated", ",".join(prefixes), _check_prefixes)
+        warehouse = _ask(
+            f"5/5 Warehouse dialect ({' | '.join(WAREHOUSE_DIALECTS)})", warehouse or "none",
+            lambda v: validate_choice(v, WAREHOUSE_DIALECTS, "warehouse.dialect"),
         )
     elif not yes:
         typer.echo("(no terminal attached — taking the detected proposal; re-run interactively to adjust)")

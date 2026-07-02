@@ -136,6 +136,24 @@ def test_cli_init_yes_writes_valid_config_and_is_idempotent(tmp_path, monkeypatc
     assert (tmp_path / "jobwright.config.yaml").read_text() == before
 
 
+def test_cli_init_force_from_subdir_replaces_parent_config(tmp_path, monkeypatch):
+    from jobwright.cli import app
+    from jobwright.config import load_config
+
+    (tmp_path / "jobwright.config.yaml").write_text(
+        "platform:\n  kind: airflow\n  deploy_model: git-sync\n  dags_dir: dags\n"
+    )
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    monkeypatch.chdir(sub)
+    result = CliRunner().invoke(app, ["init", "--force", "--yes"])
+    assert result.exit_code == 0, result.output
+    # the replacement lands where the config lives — no second, shadowing config in cwd
+    assert not (sub / "jobwright.config.yaml").exists()
+    cfg = load_config(tmp_path / "jobwright.config.yaml")
+    assert cross_validate(cfg) == []
+
+
 # --------------------------------------------------------------------------- #
 # the v2 surface: 7 skills, 4 alias stubs, guard announced, deploy gated
 # --------------------------------------------------------------------------- #
