@@ -21,3 +21,6 @@ venv/
 # Root-anchored so the example fixtures under examples/ ARE tracked.
 # The documented template lives at jobwright.config.example.yaml.
 /jobwright.config.yaml
+
+# multi-AI review working artifacts (local only)
+.ai-friend-review/

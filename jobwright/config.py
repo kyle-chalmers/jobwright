@@ -280,6 +280,47 @@ class Config:
         )
 
 
+def cross_validate(cfg: Config) -> list[str]:
+    """Interdependent-key checks: which of ``job_def_dirs`` / ``dags_dir`` applies
+    depends on ``deploy_model``. Returns human-readable errors (empty = clean).
+
+    Deliberately NOT enforced by ``load_config`` — existing configs keep loading and
+    every file-based command keeps working. ``jobwright doctor`` and the ``init``
+    wizard enforce these, so misconfiguration is caught where it can be fixed.
+    """
+    errors: list[str] = []
+    p = cfg.platform
+    if p.deploy_model == "git-sync":
+        if p.job_def_dirs:
+            errors.append(
+                "platform.job_def_dirs is set, but platform.deploy_model is 'git-sync' — "
+                "on a git-synced platform the code tree itself is what deploys, so "
+                "job_def_dirs is never read. Remove platform.job_def_dirs (or, if job "
+                "definitions really are pushed from repo files, fix deploy_model instead)."
+            )
+        if not p.dags_dir:
+            errors.append(
+                "platform.deploy_model is 'git-sync' but platform.dags_dir is not set — "
+                "jobwright needs to know where the synced code lives. Set platform.dags_dir "
+                "(e.g. 'dags')."
+            )
+    else:  # api-reset | sql-ddl: definitions deploy from repo files
+        if not p.job_def_dirs:
+            errors.append(
+                f"platform.deploy_model is '{p.deploy_model}' (definitions deploy from repo "
+                "files) but platform.job_def_dirs is empty — drift detection and the "
+                "definition checks would have nothing to scan. Set platform.job_def_dirs "
+                "(e.g. dev/prod paths)."
+            )
+        if p.dags_dir:
+            errors.append(
+                f"platform.dags_dir is set, but platform.deploy_model is '{p.deploy_model}' — "
+                "dags_dir only applies to git-sync platforms. Remove platform.dags_dir (or "
+                "change deploy_model to 'git-sync' if git really is the source of truth)."
+            )
+    return errors
+
+
 def find_config(start: Path | None = None) -> Path | None:
     """Walk up from ``start`` (default: cwd) looking for jobwright.config.yaml."""
     here = (start or Path.cwd()).resolve()
