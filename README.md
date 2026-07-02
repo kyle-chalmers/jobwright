@@ -8,73 +8,90 @@
 
 **An open-source AI layer for governing, validating, and safely shipping data-orchestration jobs with Claude Code.**
 
-jobwright treats your *jobs* — Databricks Jobs, Airflow DAGs, dbt jobs, Snowflake Tasks — as deployable artifacts that deserve a governed lifecycle: a catalog you can recall before you rebuild, architecture-compliance scanning, a per-job validation gate, and a deploy-safety guard that prompts for confirmation before known destructive commands (so a stale-definition overwrite can't happen unattended).
+jobwright treats your *jobs* — Databricks Jobs, Airflow DAGs, dbt jobs, Snowflake Tasks — as
+deployable artifacts that deserve a governed lifecycle: a catalog you can recall before you
+rebuild, architecture-compliance scanning, a per-job validation gate, and a deploy-safety guard
+that pauses for confirmation before destructive commands — so a stale-definition overwrite can't
+happen unattended.
 
-It is the third in a family of Claude Code "AI layer" kits:
-
-| Kit | Domain |
-|---|---|
-| [ticketwright](https://github.com/kyle-chalmers/ticketwright) | ticket-driven data work (plan → implement → validate) |
-| [streamsnow](https://github.com/kyle-chalmers/streamsnow) | Streamlit-in-Snowflake apps (build → govern → ship) |
-| **jobwright** | **data-orchestration jobs (govern → validate → safely ship)** |
-
-> **Complementary, not overlapping with ticketwright.** ticketwright's Databricks adapter is about *querying* a warehouse while doing a ticket. jobwright is about the *jobs themselves* — their definitions, architecture compliance, and safe deploy. ticketwright's "pause before any prod job deploy" gotcha is exactly the hand-off point to jobwright's `diff-job` + deploy-safety guard.
-
-## Why
-
-- **A deploy-safety guard.** A `PreToolUse` hook asks for confirmation before destructive orchestration commands (`databricks jobs reset`/`delete`, `airflow dags delete`, `DROP TASK`, …) and before destructive warehouse SQL — including SQL hidden in a `-f` file. On `api-reset` platforms it specifically blocks a reset from a possibly-stale repo definition until you've run a live-vs-repo diff. This turns a prose rule into a runtime gate.
-- **A jobs index.** A deterministic `JOBS.md` + `OBJECTS.md` over every job in the repo — ticket, purpose, schedule, owner, status, and architecture-compliance flags — so you (and the agent) recall prior work before rebuilding, and see migration debt at a glance.
-- **Architecture compliance.** A static scan of job code for deprecated-schema references and layer-referencing violations, driven by config — no database connection.
-- **Per-job validation.** A local PASS/FAIL gate that runs the same checks your CI does, scoped to one job.
-
-## Two seams
-
-jobwright has two orthogonal abstraction axes, expressed as two config blocks:
-
-- **platform** — the orchestrator a job *runs on* (`databricks` / `airflow` / `dbt` / `snowflake_tasks` / …). Owns the lifecycle verbs. Its `deploy_model` (`api-reset` | `git-sync` | `sql-ddl`) decides whether live-vs-repo drift even applies.
-- **warehouse / architecture** — the store a job *reads/writes* and the static schema-reference rules. Policy only; jobwright never opens a database connection.
-
-The platform seam is pluggable via thin adapters (a Python class implementing the verb contract + a markdown playbook). Shipped adapters span all three deploy models:
-
-| Platform | `deploy_model` | Drift detection |
-|---|---|---|
-| Databricks Jobs (reference) | `api-reset` | yes — live can drift from repo |
-| Snowflake Tasks | `sql-ddl` | yes — live DDL vs repo DDL |
-| Apache Airflow | `git-sync` | n/a — git is the source of truth |
-| dbt | `git-sync` | n/a — project is the source of truth |
-
-The generic checks (`syntax`, `deps`, `architecture`, `docs`) and the deploy-safety guard are platform-agnostic — see [`examples/`](examples/) for a Databricks repo and an Airflow + BigQuery repo. Adding a platform is two files (a `JobPlatformAdapter` subclass + a markdown playbook); see [`CONTRIBUTING.md`](CONTRIBUTING.md).
-
-## Install
+## Five-minute quickstart
 
 ```bash
-pip install jobwright          # or: uvx jobwright
+pip install jobwright                # or: uvx jobwright
 # Claude Code plugin (skills + hooks):
 #   /plugin marketplace add kyle-chalmers/jobwright
 #   /plugin install jobwright@jobwright
+
+jobwright init        # the setup wizard: detects your platform, asks ≤5 questions,
+                      # writes a validated jobwright.config.yaml (rest = commented defaults)
+jobwright doctor      # verify config + environment (a missing CLI degrades, doesn't block)
+jobwright jobs-index  # build the catalog: jobs/JOBS.md + OBJECTS.md
 ```
 
-## Quickstart
+Then work through the front door:
 
-```bash
-cp jobwright.config.example.yaml jobwright.config.yaml   # edit for your repo
-jobwright doctor                                         # check config + environment
-jobwright jobs-index                                     # render jobs/JOBS.md + OBJECTS.md
-jobwright diff-job BI-813                                # live-vs-repo drift for one job
+```
+/start-job BI-813 "Remitter Report"
 ```
 
-See [`jobwright.config.example.yaml`](jobwright.config.example.yaml) for the full, documented config (including an Airflow + BigQuery variant) and [`examples/`](examples/) for a runnable sample repo.
+One command owns the lifecycle — it recalls prior work from the catalog, scaffolds (or resumes)
+the job, drafts its documentation *from the code*, gates it with `jobwright validate-job`, and
+routes to `/safe-deploy` when it's ready to ship.
+
+## The skills
+
+| Skill | What it does |
+|---|---|
+| **/start-job** | the front door: recall → scaffold or open → document → build → validate → route to deploy |
+| **/setup** | configure a repo (the `init` wizard) or adopt one that already has jobs |
+| **/document-job** | bring a job's docs up to the gate by inspecting the code — you only answer what the code can't |
+| **/safe-deploy** | the only sanctioned deploy: validates first, diffs live-vs-repo, checks active runs, confirms side-effects |
+| **/triage-failure** | investigate a failed run, classify it, propose a scoped fix |
+| **/architecture-audit** | scan for deprecated-schema references and layer violations (no DB connection) |
+| **/build-jobs-index** | regenerate the deterministic catalog (`JOBS.md` + `OBJECTS.md`; CI-gateable with `--check`) |
+
+Old v0.0.x names (`/onboard`, `/configure-workspace`, `/scaffold-job`, `/validate-job`) still work
+as deprecated aliases — see the [changelog](CHANGELOG.md) for the rename map and upgrade path.
+
+## What keeps you safe
+
+- **A deploy-safety guard** that announces itself at session start and pauses before destructive
+  job/SQL commands — deletes, resets, drops, destructive SQL (even hidden in a `-f` file). It
+  defends against shell-quote and full-path evasion, and it fails open: it only ever *adds* a
+  confirmation.
+- **A validation gate a deploy can't skip.** `/safe-deploy` runs `jobwright validate-job` before
+  anything else touches the platform; the same gate runs in `/start-job` and CI.
+- **Drift detection before overwrite.** `jobwright diff-job` compares the live definition to the
+  repo's before a deploy, because repo files go stale — and a stale reset has broken production
+  jobs. On platforms that deploy straight from git it tells you so and points at `git diff`.
+- **Graceful degradation.** No platform CLI on PATH? Every file-based check (validation, catalog,
+  compliance scan) still works; `doctor` names exactly what the live steps need.
+
+## Works with your platform
+
+Databricks Jobs, Snowflake Tasks, Apache Airflow, and dbt ship as adapters; the checks and the
+guard are platform-agnostic. See [`examples/`](examples/) for runnable Databricks and
+Airflow + BigQuery sample repos, [`jobwright.config.example.yaml`](jobwright.config.example.yaml)
+for the full documented config, and [`docs/architecture.md`](docs/architecture.md) for the
+two-seam model, deploy models, and how to add a platform (two files).
+
+> **Complementary, not overlapping with [ticketwright](https://github.com/kyle-chalmers/ticketwright).**
+> ticketwright governs ticket-driven analysis work; jobwright governs the *jobs themselves* —
+> definitions, compliance, and safe deploys. ticketwright's "pause before any prod job deploy"
+> gotcha is exactly the hand-off to jobwright's `/safe-deploy`. Third kit in the family with
+> [streamsnow](https://github.com/kyle-chalmers/streamsnow).
+
+## CLI
+
+```
+jobwright init [--yes] [--force] | doctor | jobs-index [--check]
+          validate-job <folder> [--offline] | diff-job <job>
+          check {syntax|job-defs|deps|architecture|docs} <paths>
+          new-job <ticket> "<name>" | gen-agents
+```
 
 ## Status
 
-Alpha. Shipped: the deploy-safety guard, the jobs index, four platform adapters (Databricks, Snowflake Tasks, Airflow, dbt) across all three deploy models, the generic checks (`syntax` / `job-defs` / `deps` / `architecture` / `docs`) + composite `validate-job`, the job scaffolder + generated `AGENTS.md`, the SessionStart + index-regen hooks, and 10 lifecycle skills. Publishing is gated on a security/leak review — see [`docs/PUBLISHING.md`](docs/PUBLISHING.md).
-
-### CLI
-
-```
-jobwright doctor | init | jobs-index [--check] | validate-job <folder> [--offline]
-          check {syntax|job-defs|deps|architecture|docs} <paths>
-          new-job <ticket> "<name>" | gen-agents | diff-job <job>
-```
+Alpha. Publishing is gated on a security/leak review — see [`docs/PUBLISHING.md`](docs/PUBLISHING.md).
 
 MIT licensed.

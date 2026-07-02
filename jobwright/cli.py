@@ -75,6 +75,14 @@ def doctor() -> None:
     typer.echo(f"  deprecated_deny   = {', '.join(cfg.architecture.deprecated_schema_deny) or '(none)'}")
 
     ok = True
+    # Interdependent keys (job_def_dirs vs dags_dir depends on deploy_model). Loading
+    # stays lenient so old configs keep working; doctor is where mistakes get named.
+    from .config import cross_validate
+
+    for err in cross_validate(cfg):
+        typer.secho(f"✗ {err}", fg=typer.colors.RED)
+        ok = False
+
     try:
         from .platforms import adapter_kinds, get_adapter_class
 
@@ -183,41 +191,85 @@ def diff_job(
     raise typer.Exit(1)
 
 
-_STARTER_CONFIG = """\
-schema_version: 1
-project:
-  name: "My Data Jobs"
-  key_prefixes: ["JOB"]
-  jobs_dir: jobs
-platform:
-  kind: databricks            # databricks | airflow | dbt | snowflake_tasks | ...
-  profile: prod
-  deploy_model: api-reset     # api-reset | git-sync | sql-ddl
-  job_def_dirs:
-    dev: databricks/job_definitions/dev
-    prod: databricks/job_definitions/prod
-warehouse:
-  dialect: snowflake
-architecture:
-  layers: [RAW, STAGING, ANALYTICS, REPORTING]
-  layer_rules:
-    STAGING: [RAW, STAGING]
-    ANALYTICS: [STAGING, ANALYTICS]
-    REPORTING: [STAGING, ANALYTICS, REPORTING]
-  deprecated_schema_deny: []
-"""
-
-
 @app.command()
-def init() -> None:
-    """Write a starter jobwright.config.yaml in the current directory (if absent)."""
-    if find_config() is not None:
-        typer.secho(f"{CONFIG_FILENAME} already exists — nothing to do.", fg=typer.colors.YELLOW)
-        raise typer.Exit(0)
-    from pathlib import Path as _P
+def init(
+    yes: bool = typer.Option(False, "--yes", "-y", help="accept the detected proposal, ask nothing"),
+    force: bool = typer.Option(False, "--force", help="replace an existing jobwright.config.yaml"),
+) -> None:
+    """Set up jobwright here — detect your platform, ask at most 5 questions, write a validated config."""
+    from .config import PLATFORM_KINDS, WAREHOUSE_DIALECTS
+    from .wizard import DEPLOY_MODEL_BY_KIND, compose_config, detect, validate_config_text
 
-    _P(CONFIG_FILENAME).write_text(_STARTER_CONFIG)
-    typer.secho(f"Wrote {CONFIG_FILENAME}. Edit it, then run `jobwright doctor`.", fg=typer.colors.GREEN)
+    existing = find_config()
+    if existing is not None and not force:
+        typer.secho(
+            f"{CONFIG_FILENAME} already exists at {existing} — this repo is set up.\n"
+            "Check it with `jobwright doctor`, edit it directly, or re-run `jobwright init --force` "
+            "to start over.",
+            fg=typer.colors.YELLOW,
+        )
+        raise typer.Exit(0)
+
+    root = Path.cwd()
+    det = detect(root)
+    if det.evidence:
+        typer.secho(f"Detected platform: {det.platform}", fg=typer.colors.GREEN)
+        for why in det.evidence:
+            typer.echo(f"    · {why}")
+    else:
+        typer.echo("No platform signals found in this repo — you can still pick one below.")
+
+    interactive = not yes and sys.stdin.isatty()
+    kind = det.platform or "databricks"
+    profile, jobs_dir, warehouse = det.profile, det.jobs_dir, det.warehouse
+    prefixes = det.key_prefixes or ["JOB"]
+    if interactive:
+        # The whole interview: 5 questions, every answer pre-filled from detection.
+        kind = typer.prompt(f"1/5 Platform ({' | '.join(PLATFORM_KINDS)})", default=kind)
+        if kind not in PLATFORM_KINDS:
+            typer.secho(
+                f"'{kind}' is not a platform jobwright knows ({', '.join(PLATFORM_KINDS)}).",
+                fg=typer.colors.RED,
+            )
+            raise typer.Exit(2)
+        if DEPLOY_MODEL_BY_KIND[kind] == "git-sync":
+            typer.echo("2/5 CLI profile — skipped (git-synced platform: git is the source of truth).")
+        else:
+            profile = typer.prompt("2/5 Platform CLI profile name (never a token)", default=profile or "prod")
+        jobs_dir = typer.prompt("3/5 Jobs directory (one governed folder per job)", default=jobs_dir)
+        raw = typer.prompt("4/5 Ticket key prefix(es), comma-separated", default=",".join(prefixes))
+        prefixes = [p.strip() for p in raw.split(",") if p.strip()]
+        warehouse = typer.prompt(
+            f"5/5 Warehouse dialect ({' | '.join(WAREHOUSE_DIALECTS)})", default=warehouse or "none"
+        )
+    elif not yes:
+        typer.echo("(no terminal attached — taking the detected proposal; re-run interactively to adjust)")
+
+    text = compose_config(
+        name=root.name.replace("-", " ").replace("_", " ").title() or "Data Jobs",
+        kind=kind,
+        profile=profile if DEPLOY_MODEL_BY_KIND[kind] != "git-sync" else "",
+        jobs_dir=jobs_dir,
+        key_prefixes=prefixes,
+        warehouse=warehouse or "none",
+        job_def_dirs=det.job_def_dirs,
+        dags_dir=det.dags_dir,
+    )
+    try:
+        cfg = validate_config_text(text)  # interdependent keys checked BEFORE writing
+    except ConfigError as exc:
+        typer.secho(f"refusing to write an invalid config: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(2) from None
+
+    (root / CONFIG_FILENAME).write_text(text)
+    typer.secho(f"\nWrote {CONFIG_FILENAME}:", fg=typer.colors.GREEN)
+    typer.echo(
+        f"  platform {cfg.platform.kind} · deploys: {cfg.platform.deploy_model} · jobs in {cfg.project.jobs_dir}/"
+    )
+    typer.echo(
+        "  Commented defaults inside cover the rest (ticket links, governance fields, exceptions) — edit anytime.\n"
+        "Next: `jobwright doctor` to verify, then `jobwright jobs-index` to build the catalog."
+    )
 
 
 @app.command("new-job")

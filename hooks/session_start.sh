@@ -8,7 +8,7 @@ ROOT="${CLAUDE_PROJECT_DIR:-$PWD}"
 CFG="$ROOT/jobwright.config.yaml"
 [ -f "$CFG" ] || exit 0
 
-echo "jobwright repo detected. Skills: /build-jobs-index /validate-job /architecture-audit /scaffold-job /document-job /safe-deploy /triage-failure /onboard. CLI: jobwright doctor | jobs-index | validate-job <folder> | check architecture <path> | diff-job <job>."
+echo "jobwright repo detected. Front door: /start-job <ticket> (recall → scaffold → document → validate → deploy). Other skills: /setup /document-job /safe-deploy /triage-failure /architecture-audit /build-jobs-index. CLI: jobwright doctor | jobs-index | validate-job <folder> | check architecture <path> | diff-job <job>."
 
 # Catalog summary, if the index has been generated (cheap: read two header lines).
 # `|| true` guards each pipeline so a no-match grep can't trip `set -e`/pipefail.
@@ -21,4 +21,5 @@ if [ -f "$JOBS_MD" ]; then
   [ -n "$SUMMARY" ] && echo "Catalog: $SUMMARY. ${COVERAGE:-} Read JOBS.md / OBJECTS.md and recall prior work before building."
 fi
 
-echo "Safety: destructive job/SQL commands are gated — run \`jobwright diff-job\` before any deploy/reset; never reset a job from a possibly-stale repo definition."
+# Announce the guard explicitly — an invisible safety net reads as no safety net.
+echo "Safety: the deploy-safety guard is ACTIVE in this session — destructive job/SQL commands (deploy/reset/update/delete/drop and destructive SQL, even inside -f files) will pause for confirmation before running. Deploys go through /safe-deploy, which validates the job and diffs live-vs-repo first; never reset a job from a possibly-stale repo definition."

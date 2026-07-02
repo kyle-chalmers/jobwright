@@ -19,11 +19,28 @@ echo "==> pytest (Phase 0 contract)"
 
 echo "==> skill leak check"
 if [ -d skills ] && [ -n "$(find skills -name '*.md' -print -quit 2>/dev/null)" ]; then
-  if grep -rEli '\b(databricks|airflow|dbt|dagster|prefect|snowflake_tasks|glue)\b' skills/ >/dev/null 2>&1; then
-    echo "FAIL: a platform name leaked into skills/ — skills must call abstract verbs, not name tools"
-    grep -rEli '\b(databricks|airflow|dbt|dagster|prefect|snowflake_tasks|glue)\b' skills/ || true
+  if grep -rEli '\b(databricks|airflow|dbt|dagster|prefect|snowflake_tasks|glue)\b' skills/ commands/ >/dev/null 2>&1; then
+    echo "FAIL: a platform name leaked into skills/ or commands/ — skills must call abstract verbs, not name tools"
+    grep -rEli '\b(databricks|airflow|dbt|dagster|prefect|snowflake_tasks|glue)\b' skills/ commands/ || true
     exit 1
   fi
 fi
+
+echo "==> v2 skill surface (7 skills + deprecated aliases route correctly)"
+for s in setup start-job document-job safe-deploy triage-failure architecture-audit build-jobs-index; do
+  [ -f "skills/$s/SKILL.md" ] || { echo "FAIL: missing v2 skill: $s"; exit 1; }
+done
+extra="$(ls -d skills/*/ | grep -Ev '/(setup|start-job|document-job|safe-deploy|triage-failure|architecture-audit|build-jobs-index)/$' || true)"
+[ -z "$extra" ] || { echo "FAIL: unexpected skill folder (v1 leftover?): $extra"; exit 1; }
+for a in onboard configure-workspace scaffold-job validate-job; do
+  { [ -f "commands/$a.md" ] && grep -q 'Deprecated' "commands/$a.md"; } \
+    || { echo "FAIL: v1 alias stub missing/unmarked: $a"; exit 1; }
+done
+# the two mechanical UX guarantees: safe-deploy validates before deploying,
+# and the session hook announces the guard instead of leaving it invisible
+grep -q 'validate-job' skills/safe-deploy/SKILL.md \
+  || { echo "FAIL: safe-deploy no longer runs the validation gate"; exit 1; }
+grep -qi 'guard is ACTIVE' hooks/session_start.sh \
+  || { echo "FAIL: session_start.sh no longer announces the deploy-safety guard"; exit 1; }
 
 echo "OK: jobwright selftest passed"
