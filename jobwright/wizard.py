@@ -18,11 +18,12 @@ import os
 import re
 import shutil
 from dataclasses import dataclass, field
+from itertools import islice
 from pathlib import Path
 
 import yaml
 
-from .config import Config, ConfigError, cross_validate
+from .config import Config, ConfigError, cross_validate, validate_name, validate_relpath
 
 # deploy model per platform kind. Where an adapter exists, tests assert it agrees;
 # adapter-less kinds carry the model their ecosystem conventionally uses.
@@ -90,7 +91,8 @@ def _sniff_platform(root: Path, home: Path, job_defs: list[Path], sql_files: lis
         hit("dbt", 3, "dbt_project.yml in repo root")
     dags = root / "dags"
     if dags.is_dir():
-        for py in sorted(dags.glob("*.py"))[:20]:
+        # bounded recursive scan — DAG files often live in per-team subfolders
+        for py in islice(dags.rglob("*.py"), 200):
             try:
                 text = py.read_text(errors="replace")
             except OSError:
@@ -150,6 +152,12 @@ def _sniff_jobs_dir(root: Path) -> tuple[str, list[str]]:
         d = root / name
         if not d.is_dir():
             continue
+        try:
+            # a detected value that can't survive config validation is dropped, not fatal —
+            # non-interactive init must degrade to the default, never crash on an odd dir name
+            validate_relpath(name, "project.jobs_dir")
+        except ConfigError:
+            continue
         prefixes = sorted(
             {m.group(1) for child in d.iterdir() if child.is_dir() and (m := _JOB_FOLDER_RE.match(child.name))}
         )
@@ -159,13 +167,27 @@ def _sniff_jobs_dir(root: Path) -> tuple[str, list[str]]:
 
 
 def _sniff_job_def_dirs(root: Path, job_defs: list[Path]) -> dict[str, str]:
+    def _safe(env: str, rel: str) -> bool:
+        try:
+            validate_name(env, "platform.job_def_dirs key")
+            validate_relpath(rel, "platform.job_def_dirs value")
+            return True
+        except ConfigError:  # oddly named dir: skip it, don't sink the wizard
+            return False
+
     for defs in sorted(job_defs):
         if not defs.is_dir():
             continue
-        envs = {c.name: str(c.relative_to(root)) for c in sorted(defs.iterdir()) if c.is_dir()}
+        envs = {
+            c.name: str(c.relative_to(root))
+            for c in sorted(defs.iterdir())
+            if c.is_dir() and _safe(c.name, str(c.relative_to(root)))
+        }
         if envs:
             return envs
-        return {"prod": str(defs.relative_to(root))}
+        rel = str(defs.relative_to(root))
+        if _safe("prod", rel):
+            return {"prod": rel}
     return {}
 
 
@@ -191,7 +213,12 @@ def detect(root: Path, home: Path | None = None) -> Detection:
         jobs_dir=jobs_dir or "jobs",
         key_prefixes=prefixes,
         job_def_dirs=_sniff_job_def_dirs(root, job_defs),
-        dags_dir="dags" if (root / "dags").is_dir() else "",
+        # the git-synced code dir is platform-shaped: dbt projects keep models/, not dags/
+        dags_dir=(
+            "dags" if (root / "dags").is_dir()
+            else "models" if kind == "dbt" and (root / "models").is_dir()
+            else ""
+        ),
         warehouse=_sniff_warehouse(kind, home),
     )
 
@@ -211,6 +238,10 @@ def compose_config(
     dags_dir: str,
 ) -> str:
     deploy_model = DEPLOY_MODEL_BY_KIND[kind]
+    # name is the one free-text value interpolated into the YAML — strip the characters
+    # that could break the double-quoted scalar (a hostile repo dir name must not produce
+    # a traceback; everything else goes through the config validators)
+    name = re.sub(r'[\\"\r\n\t]', " ", name).strip() or "Data Jobs"
     prefixes = ", ".join(f'"{p}"' for p in (key_prefixes or ["JOB"]))
     lines = [
         "# jobwright.config.yaml — the single source of truth. Written by `jobwright init`.",
@@ -233,7 +264,10 @@ def compose_config(
         lines.append("  # profile: prod                # CLI profile NAME (never a token/secret)")
     lines.append(f"  deploy_model: {deploy_model}      # how deploys work; `jobwright doctor` validates this")
     if deploy_model == "git-sync":
-        lines.append(f"  dags_dir: {dags_dir or 'dags'}                # git-synced code tree (the source of truth)")
+        # the adapter reads dags_dir as its code-dir override, so the fallback must match
+        # each platform's convention (dbt: models/, not dags/)
+        default_dir = "models" if kind == "dbt" else "dags"
+        lines.append(f"  dags_dir: {dags_dir or default_dir}                # git-synced code tree (the source of truth)")
     else:
         lines.append("  job_def_dirs:                 # definitions deploy from these repo files")
         for env, path in (job_def_dirs or {"dev": "job_definitions/dev", "prod": "job_definitions/prod"}).items():
@@ -262,8 +296,13 @@ def compose_config(
 
 
 def validate_config_text(text: str) -> Config:
-    """Load + cross-validate composed YAML; raises ConfigError with every problem."""
-    cfg = Config.from_dict(yaml.safe_load(text) or {})
+    """Load + cross-validate composed YAML; raises ConfigError with every problem
+    (including YAML breakage, so callers have a single exception to handle)."""
+    try:
+        data = yaml.safe_load(text) or {}
+    except yaml.YAMLError as exc:
+        raise ConfigError(f"composed config is not valid YAML: {exc}") from exc
+    cfg = Config.from_dict(data)
     errors = cross_validate(cfg)
     if errors:
         raise ConfigError("; ".join(errors))

@@ -136,6 +136,77 @@ def test_cli_init_yes_writes_valid_config_and_is_idempotent(tmp_path, monkeypatc
     assert (tmp_path / "jobwright.config.yaml").read_text() == before
 
 
+def test_wizard_dbt_defaults_to_models_not_dags(tmp_path):
+    # the dbt adapter reads dags_dir as its code-dir override (default models/) —
+    # the wizard must not point it at a nonexistent dags/
+    (tmp_path / "dbt_project.yml").write_text("name: acme\n")
+    (tmp_path / "models").mkdir()
+    det = wizard.detect(tmp_path, home=tmp_path)
+    assert det.platform == "dbt" and det.dags_dir == "models"
+    text = wizard.compose_config(
+        name="X", kind="dbt", profile="", jobs_dir="jobs", key_prefixes=["JOB"],
+        warehouse="none", job_def_dirs={}, dags_dir="",  # empty: exercises the kind-aware fallback
+    )
+    assert wizard.validate_config_text(text).platform.dags_dir == "models"
+
+
+def test_wizard_detects_nested_dag_files(tmp_path):
+    (tmp_path / "dags" / "team").mkdir(parents=True)
+    (tmp_path / "dags" / "team" / "etl.py").write_text("from airflow import DAG\n")
+    det = wizard.detect(tmp_path, home=tmp_path)
+    assert det.platform == "airflow"
+
+
+def test_wizard_drops_undetectable_values_instead_of_dying(tmp_path):
+    # a jobs dir whose NAME fails the config charset must be skipped, not crash --yes init
+    bad = tmp_path / "data jobs"
+    (bad / "BI-1_Foo").mkdir(parents=True)
+    det = wizard.detect(tmp_path, home=tmp_path)
+    assert det.jobs_dir == "jobs"  # fell back to the default
+    # a hostile repo name must not break the composed YAML
+    text = wizard.compose_config(
+        name='evil " name\nwith: breaks', kind="databricks", profile="prod", jobs_dir="jobs",
+        key_prefixes=["JOB"], warehouse="none", job_def_dirs={}, dags_dir="",
+    )
+    wizard.validate_config_text(text)  # must not raise (YAML stays parseable)
+
+
+def test_cli_init_interactive_reprompts_and_writes_valid_config(tmp_path, monkeypatch):
+    from jobwright import cli as cli_mod
+    from jobwright.config import load_config
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli_mod, "_stdin_is_tty", lambda: True)
+    # q1 platform: bad answer, re-asked, then dbt (git-sync -> profile question skipped);
+    # q3 jobs dir, q4 prefixes, q5 warehouse: accept defaults
+    result = CliRunner().invoke(cli_mod.app, ["init"], input="not-a-platform\ndbt\n\n\n\n")
+    assert result.exit_code == 0, result.output
+    assert "is not a valid" in result.output or "must be one of" in result.output  # re-prompt happened
+    cfg = load_config(tmp_path / "jobwright.config.yaml")
+    assert cfg.platform.kind == "dbt" and cfg.platform.dags_dir == "models"
+    assert cross_validate(cfg) == []
+
+
+def test_cli_init_warns_on_adapterless_platform(tmp_path, monkeypatch):
+    from jobwright import cli as cli_mod
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli_mod, "_stdin_is_tty", lambda: True)
+    result = CliRunner().invoke(cli_mod.app, ["init"], input="dagster\n\n\n\n")
+    assert result.exit_code == 0, result.output
+    assert "no adapter" in result.output
+
+
+def test_cli_init_no_tty_degrades_to_detected_proposal(tmp_path, monkeypatch):
+    from jobwright.cli import app
+
+    monkeypatch.chdir(tmp_path)  # CliRunner stdin is not a tty
+    result = CliRunner().invoke(app, ["init"])
+    assert result.exit_code == 0, result.output
+    assert "no terminal attached" in result.output
+    assert (tmp_path / "jobwright.config.yaml").is_file()
+
+
 def test_cli_init_force_from_subdir_replaces_parent_config(tmp_path, monkeypatch):
     from jobwright.cli import app
     from jobwright.config import load_config

@@ -62,7 +62,11 @@ For a repo already running jobwright v0.0.x (config committed, `deploy_safety.py
 
 1. **`jobwright.config.yaml` — no changes required.** The format is unchanged
    (`schema_version: 1`). `jobwright doctor` now also cross-checks `job_def_dirs`/`dags_dir`
-   against `deploy_model`; a config that was correct before passes as-is.
+   against `deploy_model`: a cross-consistent config passes as-is, but a config carrying the
+   key its deploy model never reads (e.g. a leftover `dags_dir` on an `api-reset` config, or
+   `job_def_dirs` on `git-sync`) now fails `doctor` with a message naming the fix. Loading and
+   every file-based command still work either way — only `doctor`'s exit code is stricter, so
+   check CI gates that call `doctor` after upgrading.
 2. **Vendored hooks keep working.** `deploy_safety.py`'s import surface
    (`jobwright.platforms.destructive_patterns_for`) and its embedded fallbacks are unchanged —
    no need to re-vendor, though re-vendoring is safe.

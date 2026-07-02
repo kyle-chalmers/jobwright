@@ -191,6 +191,11 @@ def diff_job(
     raise typer.Exit(1)
 
 
+def _stdin_is_tty() -> bool:
+    """Separate so tests can drive the interactive path (CliRunner stdin is never a tty)."""
+    return sys.stdin.isatty()
+
+
 def _ask(label: str, default: str, check) -> str:
     """Prompt until the answer passes validation — a typo re-asks instead of aborting the wizard."""
     while True:
@@ -239,7 +244,7 @@ def init(
     else:
         typer.echo("No platform signals found in this repo — you can still pick one below.")
 
-    interactive = not yes and sys.stdin.isatty()
+    interactive = not yes and _stdin_is_tty()
     kind = det.platform or "databricks"
     profile, jobs_dir, warehouse = det.profile, det.jobs_dir, det.warehouse
     prefixes = det.key_prefixes or ["JOB"]
@@ -275,6 +280,16 @@ def init(
         )
     elif not yes:
         typer.echo("(no terminal attached — taking the detected proposal; re-run interactively to adjust)")
+
+    from .platforms import adapter_kinds
+
+    if kind not in adapter_kinds():
+        typer.secho(
+            f"note: no adapter ships for '{kind}' yet — file-based checks (validation, catalog, "
+            "compliance) work, but live verbs (diff-job, run status) are unavailable and "
+            "`jobwright doctor` will flag the missing adapter.",
+            fg=typer.colors.YELLOW,
+        )
 
     text = compose_config(
         name=root.name.replace("-", " ").replace("_", " ").title() or "Data Jobs",
