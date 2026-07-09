@@ -3,6 +3,16 @@
 All notable changes to jobwright are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions follow semver.
 
+## [0.1.1] — 2026-07-09
+
+### Fixed
+- **Plugin failed to load on Claude Code ≥ 2.1 (`Duplicate hooks file detected`).** Current
+  Claude Code auto-loads the standard `hooks/hooks.json`, so the manifest's explicit
+  `"hooks": "./hooks/hooks.json"` pointed at an already-loaded file and aborted the whole plugin
+  (skills, hooks, and all). Removed the redundant `hooks` key from `.claude-plugin/plugin.json`;
+  the three hooks still load from the standard path. `manifest.hooks` is only for *additional*
+  hook files beyond the standard one.
+
 ## [0.1.0] — 2026-07-02
 
 The UX release: the design system that shipped in Ticketwright v2.0, applied to jobwright —
