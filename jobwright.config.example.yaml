@@ -9,6 +9,9 @@ project:
   key_prefixes: ["JOB"]            # folder/ticket prefixes, e.g. JOB-123_My_Job
   jobs_dir: jobs
   # ticket_url_template: "https://acme.atlassian.net/browse/{id}"
+  # graph_notes: true              # write an Obsidian graph layer (<jobs_dir>/graph|objects/*.md)
+                                   # alongside JOBS.md/OBJECTS.md — jobs cluster around the schemas
+                                   # they share. Set false to skip it. Default: true.
 
 # --- platform seam: the orchestrator a job RUNS ON --------------------------
 platform:
