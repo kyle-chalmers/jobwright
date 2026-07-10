@@ -124,6 +124,7 @@ class ProjectCfg:
     key_prefixes: tuple[str, ...]
     jobs_dir: str = "jobs"
     ticket_url_template: str = ""
+    graph_notes: bool = True
 
     @classmethod
     def from_dict(cls, d: dict) -> ProjectCfg:
@@ -137,11 +138,14 @@ class ProjectCfg:
                 f"project.ticket_url_template = {tmpl!r} must be an http(s) URL containing '{{id}}' "
                 "and no spaces/quotes."
             )
+        gn = d.get("graph_notes", True)  # Obsidian graph layer; safe_load gives a bool, but tolerate strings
+        graph_notes = gn.strip().lower() not in ("false", "no", "off", "0", "") if isinstance(gn, str) else bool(gn)
         return cls(
             name=str(d.get("name", "")),
             key_prefixes=prefixes,
             jobs_dir=validate_relpath(str(d.get("jobs_dir", "jobs")), "project.jobs_dir"),
             ticket_url_template=tmpl,
+            graph_notes=graph_notes,
         )
 
 

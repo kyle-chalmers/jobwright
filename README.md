@@ -48,7 +48,7 @@ routes to `/safe-deploy` when it's ready to ship.
 | **/safe-deploy** | the only sanctioned deploy: validates first, diffs live-vs-repo, checks active runs, confirms side-effects |
 | **/triage-failure** | investigate a failed run, classify it, propose a scoped fix |
 | **/architecture-audit** | scan for deprecated-schema references and layer violations (no DB connection) |
-| **/build-jobs-index** | regenerate the deterministic catalog (`JOBS.md` + `OBJECTS.md`; CI-gateable with `--check`) |
+| **/build-jobs-index** | regenerate the deterministic catalog (`JOBS.md` + `OBJECTS.md` + Obsidian graph layer; CI-gateable with `--check`) |
 
 Old v0.0.x names (`/onboard`, `/configure-workspace`, `/scaffold-job`, `/validate-job`) still work
 as deprecated aliases — see the [changelog](CHANGELOG.md) for the rename map and upgrade path.
@@ -66,6 +66,20 @@ as deprecated aliases — see the [changelog](CHANGELOG.md) for the rename map a
   jobs. On platforms that deploy straight from git it tells you so and points at `git diff`.
 - **Graceful degradation.** No platform CLI on PATH? Every file-based check (validation, catalog,
   compliance scan) still works; `doctor` names exactly what the live steps need.
+
+## See it as a graph (Obsidian)
+
+Alongside `JOBS.md` / `OBJECTS.md`, jobwright writes a small, auto-maintained graph layer under
+`<jobs_dir>/` — `graph/<ticket>.md` (a node per job) and `objects/<object>.md` (a node per data
+object) — so you can open the repo as an [Obsidian](https://obsidian.md) vault and *browse* your
+jobs. Open a table like `DATA_STORE.MVW_LOAN_TAPE` and its local graph is every job still on it;
+open a job and you see the objects it touches plus its deprecated-schema flags. Because objects are
+the hubs, **jobs cluster around the schemas they share — a deprecated schema shows every job that
+still depends on it, i.e. a live migration map.** Point Obsidian at the repo (or `<jobs_dir>/`), open
+Graph view, and for the cleanest picture filter `-JOBS -OBJECTS -README -AGENTS -CLAUDE` and add a
+color Group on `path:objects`. It's plain markdown (no plugins, no wikilinks) and renders on GitHub
+too. On by default; set `project.graph_notes: false` in `jobwright.config.yaml` to turn it off (the
+layer is cleaned up when disabled).
 
 ## Works with your platform
 
