@@ -3,6 +3,16 @@
 All notable changes to jobwright are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions follow semver.
 
+## [0.1.3] — 2026-07-10
+
+### Fixed
+- **Object extractor no longer counts commented-out code.** `jobs-index` now strips Python (`#`)
+  and SQL (`--`) line comments before scanning, so a disabled import such as
+  `#   from slack_sdk.errors import SlackApiError` no longer leaks `slack_sdk.errors` as a data
+  object in `OBJECTS.md` and the graph layer. Live imports were already skipped; the gap was that
+  a leading `#` slipped the commented import past the line-start-anchored import filter while
+  `from <module>` still matched the object regex.
+
 ## [0.1.2] — 2026-07-09
 
 ### Added
