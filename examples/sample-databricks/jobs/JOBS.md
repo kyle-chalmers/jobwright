@@ -11,4 +11,4 @@ Coverage: 1 reference deprecated schemas (migration debt).
 
 | Ticket | Job | Purpose | Schedule | Compliance | Status | Owner | Updated |
 |---|---|---|---|---|---|---|---|
-| [JOB-1](jobs/JOB-1_Demo_Report/) | JOB-1 Demo Report | Daily demo report joining staging orders to the analytics customer view | Daily at 6:00 AM | `LEGACY_STORE` | ACTIVE | Analytics Team | 2026-06-01 |
+| [JOB-1](jobs/JOB-1_Demo_Report/) | JOB-1 Demo Report | Daily demo report joining staging orders to the analytics customer view | 0 0 6 * * ? | `LEGACY_STORE` | ACTIVE | Analytics Team | 2026-06-01 |

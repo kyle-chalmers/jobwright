@@ -77,18 +77,19 @@ def main() -> int:
         return 0
     if norm.name in GENERATED:
         return 0
+    # skip the generated graph layer itself (<jobs_dir>/graph|objects/*.md) — editing a node
+    # shouldn't trigger a rebuild, and the rebuild would overwrite hand-edits anyway.
+    if norm.parent.name in ("graph", "objects") and norm.parent.parent == jobs_root:
+        return 0
 
     # Prefer in-process render (no subprocess) when the package is importable.
     try:
         from jobwright.config import load_config  # type: ignore
-        from jobwright.jobsindex import render_all, settings_from_config  # type: ignore
+        from jobwright.jobsindex import settings_from_config, write_index  # type: ignore
 
         cfg = load_config(config_path)
-        for path, txt in render_all(root, settings_from_config(cfg)).items():
-            data = txt.encode("utf-8")
-            if not path.is_file() or path.read_bytes() != data:
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_bytes(data)
+        # write_index also prunes orphaned graph nodes (deleted jobs/objects) and tidies empty dirs.
+        write_index(root, settings_from_config(cfg))
         return 0
     except Exception:
         pass

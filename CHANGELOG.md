@@ -3,6 +3,19 @@
 All notable changes to jobwright are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions follow semver.
 
+## [0.1.2] — 2026-07-09
+
+### Added
+- **Obsidian graph layer.** Alongside `JOBS.md`/`OBJECTS.md`, `jobwright jobs-index` now writes a
+  node per job (`<jobs_dir>/graph/<ticket>.md`) and a node per data object
+  (`<jobs_dir>/objects/<object>.md`), so the repo opens as an Obsidian vault: objects are hubs and
+  jobs cluster around the schemas they share — a deprecated schema shows every job still on it (a
+  live migration map). Each job node also surfaces its deprecated-schema flags. Plain relative
+  markdown links (no plugins, no wikilinks); renders on GitHub too. Deterministic and `--check`-gated
+  like the catalog, regenerated on the same PostToolUse hook, with orphan cleanup for deleted
+  jobs/objects. On by default; set `project.graph_notes: false` in `jobwright.config.yaml` to disable
+  (the layer is removed when off). Ported from ticketwright's ticket graph.
+
 ## [0.1.1] — 2026-07-09
 
 ### Fixed

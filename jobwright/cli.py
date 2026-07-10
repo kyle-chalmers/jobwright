@@ -123,27 +123,27 @@ def doctor() -> None:
 def jobs_index(
     check: bool = typer.Option(False, "--check", help="exit 1 if JOBS.md/OBJECTS.md are stale (CI gate)"),
 ) -> None:
-    """Render <jobs_dir>/JOBS.md + OBJECTS.md (deterministic; --check for a CI gate)."""
-    from .jobsindex import render_all, settings_from_config
+    """Render <jobs_dir>/JOBS.md + OBJECTS.md + the Obsidian graph layer (deterministic; --check for a CI gate)."""
+    from .jobsindex import settings_from_config, stale_index_paths, write_index
 
     cfg, root = _load()
-    fresh = render_all(root, settings_from_config(cfg))
+    settings = settings_from_config(cfg)
 
     if check:
-        stale = [p.name for p, txt in fresh.items() if (p.read_text() if p.is_file() else None) != txt]
+        stale = stale_index_paths(root, settings)
         if stale:
             typer.secho(
                 f"stale: {', '.join(stale)} — run `jobwright jobs-index`.", fg=typer.colors.RED, err=True
             )
             raise typer.Exit(1)
-        typer.secho("JOBS.md + OBJECTS.md are up to date.", fg=typer.colors.GREEN)
+        typer.secho("JOBS.md + OBJECTS.md (+ graph layer) are up to date.", fg=typer.colors.GREEN)
         raise typer.Exit(0)
 
-    for p, txt in fresh.items():
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_bytes(txt.encode("utf-8"))
-    n_jobs = sum(1 for line in next(iter(fresh.values())).splitlines() if line.startswith("| ["))
-    typer.secho(f"Wrote {' + '.join(p.name for p in fresh)} ({n_jobs} jobs).", fg=typer.colors.GREEN)
+    fresh = write_index(root, settings)
+    jobs_md = root / settings.get("jobs_dir", "jobs") / "JOBS.md"
+    n_jobs = sum(1 for line in fresh[jobs_md].splitlines() if line.startswith("| ["))
+    graph = " + graph layer" if settings.get("graph_notes", True) else ""
+    typer.secho(f"Wrote JOBS.md + OBJECTS.md{graph} ({n_jobs} jobs).", fg=typer.colors.GREEN)
 
 
 @app.command("diff-job")
