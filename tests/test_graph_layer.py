@@ -8,6 +8,7 @@ from pathlib import Path
 
 from jobwright.config import load_config
 from jobwright.jobsindex import (
+    extract_objects,
     graph_dirs,
     object_filename,
     object_layer,
@@ -83,3 +84,19 @@ def test_write_index_prunes_orphans_and_check_is_clean(tmp_path):
     off["graph_notes"] = False
     write_index(dst, off)
     assert not gdir.exists() and not odir.exists()
+
+
+def test_extract_objects_ignores_imports_and_commented_code(tmp_path):
+    """Live SQL object refs are extracted; Python imports and commented-out code are not.
+    Regression: a commented-out `#   from slack_sdk.errors import ...` used to leak
+    `slack_sdk.errors` as an object because PY_IMPORT only anchors at line start."""
+    job = tmp_path / "JOB-1_Demo"
+    job.mkdir()
+    (job / "job.py").write_text(
+        "from slack_sdk.errors import SlackApiError\n"        # live import — never an object
+        "#   from slack_sdk.errors import SlackApiError\n"    # commented import — used to leak
+        "import boto3\n"
+        "df = spark.sql('SELECT * FROM ANALYTICS.VW_LOAN')  # from cron_store.old_thing\n"
+        "# join deprecated.retired_view here later\n"
+    )
+    assert extract_objects(job) == ["ANALYTICS.VW_LOAN"]

@@ -36,6 +36,12 @@ SQL_OBJECT = re.compile(
     r"(?i)\b(?:from|join|into|update|table|view)\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w+){1,2})"
 )
 PY_IMPORT = re.compile(r"^\s*(?:from\s+\S+\s+import\b|import\s)")
+# Trailing line comment (Python `#`, SQL `--`). Stripped before extraction so
+# commented-out code never registers as a live object reference — e.g. a disabled
+# `#   from slack_sdk.errors import SlackApiError`, whose leading `#` slips past
+# PY_IMPORT (line-start anchored) but whose `from slack_sdk.errors` still matches
+# SQL_OBJECT. Rare cost: a `#`/`--` inside a string literal truncates the line.
+LINE_COMMENT = re.compile(r"(?:#|--).*$")
 
 
 # --------------------------------------------------------------------------- #
@@ -174,7 +180,8 @@ def extract_objects(job_dir: Path, cap: int = 40) -> list[str]:
                 txt = f.read_text(errors="replace")
             except OSError:
                 continue
-            for line in txt.splitlines():
+            for raw in txt.splitlines():
+                line = LINE_COMMENT.sub("", raw)
                 if PY_IMPORT.match(line):
                     continue
                 for name in SQL_OBJECT.findall(line):
