@@ -67,12 +67,29 @@ as deprecated aliases — see the [changelog](CHANGELOG.md) for the rename map a
 - **Graceful degradation.** No platform CLI on PATH? Every file-based check (validation, catalog,
   compliance scan) still works; `doctor` names exactly what the live steps need.
 
+## Hooks, in full
+
+Trust demands transparency: this plugin runs hooks, so here is every one of them. All are
+stdlib-only, make **no network calls**, never write outside the repo, and fail open — a hook
+error never blocks your session; the guard only ever *adds* a confirmation.
+
+| Event | Script | What it does |
+|---|---|---|
+| PreToolUse (Bash) | `hooks/deploy_safety.py` | Pauses before destructive job/SQL commands (`databricks jobs reset/delete`, `airflow dags delete`, dbt prod runs, `DROP TASK`, destructive SQL incl. `-f` files / stdin) |
+| PostToolUse (Write\|Edit) | `hooks/regenerate_jobs_index.py` | Keeps `JOBS.md` / `OBJECTS.md` / the graph layer fresh |
+| SessionStart | `hooks/session_start.sh` | One-line skills + catalog banner, and announces the guard is active |
+
+Every hook is repo-gated on `jobwright.config.yaml` — zero cost in unrelated repos — and
+declares an explicit timeout so a hung hook can never stall a session. To turn them all off,
+disable the plugin (`claude plugin disable jobwright`). Consumer repos that vendor
+`deploy_safety.py` can read the whole file in one screen — that's deliberate.
+
 ## See it as a graph (Obsidian)
 
 Alongside `JOBS.md` / `OBJECTS.md`, jobwright writes a small, auto-maintained graph layer under
 `<jobs_dir>/` — `graph/<ticket>.md` (a node per job) and `objects/<object>.md` (a node per data
 object) — so you can open the repo as an [Obsidian](https://obsidian.md) vault and *browse* your
-jobs. Open a table like `DATA_STORE.MVW_LOAN_TAPE` and its local graph is every job still on it;
+jobs. Open a table like `MARTS.MVW_CUSTOMER_LEDGER` and its local graph is every job still on it;
 open a job and you see the objects it touches plus its deprecated-schema flags. Because objects are
 the hubs, **jobs cluster around the schemas they share — a deprecated schema shows every job that
 still depends on it, i.e. a live migration map.** Point Obsidian at the repo (or `<jobs_dir>/`), open

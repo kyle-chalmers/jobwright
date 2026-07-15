@@ -30,7 +30,7 @@ def test_object_filename_and_layer():
     assert object_filename("ANALYTICS.VW_LOAN") == "ANALYTICS.VW_LOAN.md"
     assert object_filename("db:weird/name") == "db.weird.name.md"  # path-unsafe chars folded
     assert object_layer("ANALYTICS.VW_LOAN") == "ANALYTICS"
-    assert object_layer("DB.DATA_STORE.MVW_LOAN_TAPE") == "DATA_STORE"  # schema, not database
+    assert object_layer("DB.MARTS.MVW_CUSTOMER_LEDGER") == "MARTS"  # schema, not database
     assert object_layer("bare_name") == "object"
 
 
@@ -96,7 +96,7 @@ def test_extract_objects_ignores_imports_and_commented_code(tmp_path):
         "from slack_sdk.errors import SlackApiError\n"        # live import — never an object
         "#   from slack_sdk.errors import SlackApiError\n"    # commented import — used to leak
         "import boto3\n"
-        "df = spark.sql('SELECT * FROM ANALYTICS.VW_LOAN')  # from cron_store.old_thing\n"
+        "df = spark.sql('SELECT * FROM ANALYTICS.VW_LOAN')  # from legacy.old_thing\n"
         "# join deprecated.retired_view here later\n"
     )
     assert extract_objects(job) == ["ANALYTICS.VW_LOAN"]

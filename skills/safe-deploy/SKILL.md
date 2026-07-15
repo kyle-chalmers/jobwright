@@ -42,3 +42,13 @@ The deploy-safety guard backstops you at the command level, but run the flow del
 
 The job validated PASS before deploying, the change is live, `jobwright diff-job <job>` shows no
 drift, and side-effects were confirmed beforehand.
+
+## System-evolution retro (always, even on a clean deploy)
+
+One question before closing: did anything go wrong or get re-done this deploy? If so, **which
+layer was insufficient** — the config (`jobwright.config.yaml` / architecture rules), a skill,
+a check (`jobwright validate-job` / the deploy-safety guard), or a platform adapter? Propose
+the concrete fix to *that* artifact. If the gap is in jobwright itself, file it against the
+plugin repo (issue or a note the user can act on) rather than patching around it locally.
+Fixing the layer, not the instance, is what compounds. (Ported from ticketwright's /ship
+Phase C.)

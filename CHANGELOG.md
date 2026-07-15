@@ -3,6 +3,41 @@
 All notable changes to jobwright are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions follow semver.
 
+## [0.1.4] — 2026-07-15
+
+Hygiene + adoption release, shipped alongside the same hardening pass across the plugin family
+(streamsnow 0.4.0, ai-data-security 0.2.0).
+
+> **Upgrading an existing install:** hook file changes do not reach installed copies via
+> autoUpdate (Claude Code pins the install path — see claude-code issue #52218). Reinstall:
+> `/plugin uninstall jobwright` then `/plugin install jobwright@jobwright`, and relaunch.
+> Consumer repos that vendor `deploy_safety.py` are unaffected (the vendored copy is theirs).
+
+### Fixed
+- **Scrubbed an internal object name** that had slipped into the public README example and a
+  graph-layer test (fix-forward; replaced with a generic name). The release-time leak audit in
+  `docs/PUBLISHING.md` now also runs on every `bin/selftest.sh` invocation — mechanically
+  enforced, with the missed term added to the pattern — so a leak fails CI instead of waiting
+  for a release audit.
+
+### Added
+- **System-evolution retro** at the end of `/safe-deploy` (ported from ticketwright's `/ship`
+  Phase C): when something went wrong, fix the layer — config, skill, check, or adapter — not
+  just the instance, and file plugin gaps against the plugin repo.
+- **Hooks-in-full README section**: every hook, what it does, the stdlib-only/no-network/
+  fail-open guarantees, and how to disable.
+- **Explicit hook timeouts** (SessionStart 5s, PreToolUse 10s, PostToolUse 30s) and a
+  `plugin-validate` CI job (`claude plugin validate . --strict`).
+
+### Changed
+- **Version realignment:** `pyproject.toml`/`__version__` had stayed at 0.1.0 while the plugin
+  advanced to 0.1.3; both now track the plugin version (0.1.4). Run the PyPI publish workflow
+  to realign the published package.
+
+### Deferred (noted for a future release)
+- Skill trigger evals (skill-creator description-tuning); submission to
+  `claude-plugins-community`; multi-harness install docs.
+
 ## [0.1.3] — 2026-07-10
 
 ### Fixed
