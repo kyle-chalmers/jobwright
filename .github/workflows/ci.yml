@@ -34,3 +34,12 @@ jobs:
       # bin/selftest.sh runs ruff + pytest + the adapter-contract + skill-leak checks.
       - name: Selftest
         run: bash bin/selftest.sh
+
+  plugin-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+      - name: Plugin + marketplace manifest validation (strict)
+        run: claude plugin validate . --strict

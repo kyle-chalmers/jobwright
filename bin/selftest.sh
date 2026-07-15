@@ -26,6 +26,16 @@ if [ -d skills ] && [ -n "$(find skills -name '*.md' -print -quit 2>/dev/null)" 
   fi
 fi
 
+echo "==> org-name leak check (the PUBLISHING.md audit, enforced mechanically)"
+# Every hit is a blocker; this file and PUBLISHING.md necessarily contain the terms.
+if git grep -niE 'legacy_store|legacy_jobs|job_automation|monitor.?bot|(vw_)?customer_ledger|xoxb-|REGION|REDACTED-ACCOUNT-ID|REDACTED-ACCOUNT-ID|C0[0-9A-Z]{8,}' \
+    -- ':(exclude)docs/PUBLISHING.md' ':(exclude)bin/selftest.sh' >/dev/null 2>&1; then
+  echo "FAIL: an org-specific value leaked into the package — see docs/PUBLISHING.md section 2"
+  git grep -niE 'legacy_store|legacy_jobs|job_automation|monitor.?bot|(vw_)?customer_ledger|xoxb-|REGION|REDACTED-ACCOUNT-ID|REDACTED-ACCOUNT-ID|C0[0-9A-Z]{8,}' \
+    -- ':(exclude)docs/PUBLISHING.md' ':(exclude)bin/selftest.sh' || true
+  exit 1
+fi
+
 echo "==> v2 skill surface (7 skills + deprecated aliases route correctly)"
 for s in setup start-job document-job safe-deploy triage-failure architecture-audit build-jobs-index; do
   [ -f "skills/$s/SKILL.md" ] || { echo "FAIL: missing v2 skill: $s"; exit 1; }

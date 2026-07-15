@@ -1,11 +1,21 @@
 {
   "name": "jobwright",
   "displayName": "jobwright",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Govern, validate, and safely ship data-orchestration jobs (Databricks, Airflow, dbt, Snowflake Tasks) with Claude Code: one front-door skill for the job lifecycle, a jobs index, architecture-compliance scanning, a live-vs-repo deploy-safety guard, and per-job validation.",
-  "author": { "name": "Kyle Chalmers" },
+  "author": {
+    "name": "Kyle Chalmers"
+  },
   "homepage": "https://github.com/kyle-chalmers/jobwright",
   "repository": "https://github.com/kyle-chalmers/jobwright",
   "license": "MIT",
-  "keywords": ["databricks", "airflow", "dbt", "snowflake", "orchestration", "governance", "data-engineering"]
+  "keywords": [
+    "databricks",
+    "airflow",
+    "dbt",
+    "snowflake",
+    "orchestration",
+    "governance",
+    "data-engineering"
+  ]
 }

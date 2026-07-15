@@ -1,10 +1,14 @@
 {
-  "//": "jobwright Claude Code hooks. deploy_safety (PreToolUse/Bash) asks before destructive job/SQL commands. session_start emits a short skill+catalog banner (and announces the guard) inside a jobwright repo. regenerate_jobs_index (PostToolUse/Write|Edit) keeps JOBS.md/OBJECTS.md fresh. All are stdlib-only, fail-open, and zero-cost outside a jobwright repo (they no-op unless jobwright.config.yaml is present).",
+  "//": "jobwright Claude Code hooks. deploy_safety (PreToolUse/Bash) asks before destructive job/SQL commands. session_start emits a short skill+catalog banner (and announces the guard) inside a jobwright repo. regenerate_jobs_index (PostToolUse/Write|Edit) keeps JOBS.md/OBJECTS.md fresh. All are stdlib-only, fail-open, and zero-cost outside a jobwright repo (they no-op unless jobwright.config.yaml is present). Explicit timeouts so a hung hook can never stall a session.",
   "hooks": {
     "SessionStart": [
       {
         "hooks": [
-          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/session_start.sh\"" }
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/session_start.sh\"",
+            "timeout": 5
+          }
         ]
       }
     ],
@@ -12,7 +16,11 @@
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/deploy_safety.py\"" }
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/deploy_safety.py\"",
+            "timeout": 10
+          }
         ]
       }
     ],
@@ -20,7 +28,11 @@
       {
         "matcher": "Write|Edit|MultiEdit",
         "hooks": [
-          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/regenerate_jobs_index.py\"" }
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/regenerate_jobs_index.py\"",
+            "timeout": 30
+          }
         ]
       }
     ]
