@@ -18,9 +18,13 @@ necessarily contains the search terms as its pattern):
 ```bash
 # from the jobwright repo root — every hit is a blocker
 git grep -niE 'data_store|cron_store|bi_automation|self.?healing.?bot|\
-xoxb-|us-east-1|174688722531|246597639321|C0[0-9A-Z]{8,}' \
-  -- ':(exclude)docs/PUBLISHING.md'
+(mvw_)?loan_tape|xoxb-|us-east-1|174688722531|246597639321|C0[0-9A-Z]{8,}' \
+  -- ':(exclude)docs/PUBLISHING.md' ':(exclude)bin/selftest.sh'
 ```
+
+This same grep now runs in `bin/selftest.sh` on every test run, so a leak fails
+CI instead of waiting for the release-time audit. (`loan_tape` was added after
+`MVW_LOAN_TAPE` slipped into the public README and a test — caught 2026-07.)
 
 Specifically confirm NONE of these ever ship in the package:
 

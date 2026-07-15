@@ -359,7 +359,7 @@ def object_filename(obj: str) -> str:
 
 def object_layer(obj: str) -> str:
     """The schema/layer that qualifies an object: the segment before the final one.
-    ``ANALYTICS.VW_LOAN`` -> ANALYTICS; ``DB.DATA_STORE.MVW`` -> DATA_STORE; bare name -> 'object'."""
+    ``ANALYTICS.VW_LOAN`` -> ANALYTICS; ``DB.MARTS.MVW`` -> MARTS; bare name -> 'object'."""
     parts = obj.split(".")
     return parts[-2] if len(parts) >= 2 else "object"
 
