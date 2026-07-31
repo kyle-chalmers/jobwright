@@ -3,6 +3,18 @@
 All notable changes to jobwright are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions follow semver.
 
+## [Unreleased]
+
+### Added
+- **`jobwright install-precommit`** — installs a git pre-commit hook that regenerates the jobs
+  catalog and stages it alongside the job docs that produced it. The catalog is derived, so when
+  a job doc lands without it the committed catalog goes stale; every worktree branched from that
+  commit then inherits the drift, and the PostToolUse rebuild materializes it as phantom
+  uncommitted changes in sessions that never touched those files (which is how a session archive
+  ends up threatening to discard a dozen files nobody edited). The hook is repo-gated, scoped to
+  commits touching the jobs dir, fail-open (never blocks a commit), and installs into the shared
+  hooks dir so one install covers every linked worktree.
+
 ## [0.1.4] — 2026-07-15
 
 Hygiene + adoption release, shipped alongside the same hardening pass across the plugin family

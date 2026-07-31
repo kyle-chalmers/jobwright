@@ -17,6 +17,7 @@ Render the recall-before-rebuild catalog. Deterministic and byte-stable, so it i
    ```
    This writes `<jobs_dir>/JOBS.md` (one row per job: ticket, purpose, schedule, owner, compliance flags, status), `<jobs_dir>/OBJECTS.md` (object → jobs reverse index), and — unless `project.graph_notes: false` — an Obsidian graph layer under `<jobs_dir>/graph/` (a node per job) and `<jobs_dir>/objects/` (a node per data object). Open the repo as an Obsidian vault → Graph view to see jobs cluster around the schemas they share (a live migration map). Plain markdown, renders on GitHub too.
 2. To gate in CI / verify it is current without writing, run `jobwright jobs-index --check` (exit 1 if stale or an orphaned graph node lingers).
+2b. **Commit the catalog with the job docs that produced it.** If they drift apart, the stale committed catalog is inherited by every worktree branched from that commit, and the PostToolUse rebuild turns it into phantom uncommitted changes in unrelated sessions. `jobwright install-precommit` (once per repo) automates this — it stages the regenerated catalog into any commit touching the jobs dir. If the catalog is already stale here, regenerate and commit that as its own change before starting new work.
 3. Before building or changing a job, **read `JOBS.md` / `OBJECTS.md` first** and grep for prior work on the same object, owner, or report — reuse it instead of rebuilding.
 
 ## Done when

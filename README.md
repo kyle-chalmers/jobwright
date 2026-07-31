@@ -119,7 +119,16 @@ jobwright init [--yes] [--force] | doctor | jobs-index [--check]
           validate-job <folder> [--offline] | diff-job <job>
           check {syntax|job-defs|deps|architecture|docs} <paths>
           new-job <ticket> "<name>" | gen-agents
+          install-precommit [--force]
 ```
+
+`install-precommit` is worth running once per repo. The catalog is *derived* from the job
+folders, so a job doc that lands without its regenerated catalog leaves the committed catalog
+stale — and then every worktree branched from that commit inherits the drift, which the
+PostToolUse rebuild surfaces as phantom uncommitted changes in sessions that never touched
+those files. The hook regenerates and stages the catalog alongside the docs, only for commits
+touching the jobs dir, and never blocks a commit. It installs into the shared hooks dir, so one
+install covers every linked worktree.
 
 ## Status
 

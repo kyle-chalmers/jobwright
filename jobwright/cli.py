@@ -6,6 +6,7 @@ place. Phase 0 ships: ``doctor``, ``jobs-index`` (build/check), and ``diff-job``
 
 from __future__ import annotations
 
+import contextlib
 import shutil
 import sys
 from pathlib import Path
@@ -314,7 +315,9 @@ def init(
     )
     typer.echo(
         "  Commented defaults inside cover the rest (ticket links, governance fields, exceptions) — edit anytime.\n"
-        "Next: `jobwright doctor` to verify, then `jobwright jobs-index` to build the catalog."
+        "Next: `jobwright doctor` to verify, then `jobwright jobs-index` to build the catalog.\n"
+        "Then: `jobwright install-precommit` — keeps the generated catalog committed with the job\n"
+        "  docs, so a stale catalog never shows up as phantom uncommitted changes in a worktree."
     )
 
 
@@ -336,6 +339,78 @@ def new_job_cmd(
     for p in res.skipped:
         typer.secho(f"  · {p.relative_to(root)} (exists; --force to overwrite)", fg=typer.colors.YELLOW)
     typer.echo(f"\nNext: fill the TODOs, then `jobwright validate-job {res.job_dir.relative_to(root)}`.")
+
+
+PRECOMMIT_MARKER = "# jobwright-managed pre-commit v1"
+
+
+def _hooks_dir(root: Path) -> Path:
+    """Where git looks for hooks in THIS repo.
+
+    Honors ``core.hooksPath`` when set; otherwise ``--git-common-dir``/hooks. The common
+    dir is the important part: linked worktrees share it, so one install covers every
+    current and future worktree rather than just the one we happen to be standing in.
+    """
+    import subprocess
+
+    def _git(*args: str) -> str:
+        out = subprocess.run(
+            ["git", *args], cwd=str(root), capture_output=True, text=True, timeout=10
+        )
+        if out.returncode != 0:
+            raise RuntimeError((out.stderr or "").strip() or f"git {' '.join(args)} failed")
+        return out.stdout.strip()
+
+    configured = ""
+    # unset => git exits 1; fall through to the common dir
+    with contextlib.suppress(RuntimeError):
+        configured = _git("config", "--get", "core.hooksPath")
+    if configured:
+        p = Path(configured).expanduser()
+        return p if p.is_absolute() else (root / p)
+    common = Path(_git("rev-parse", "--git-common-dir"))
+    return (common if common.is_absolute() else (root / common)) / "hooks"
+
+
+@app.command("install-precommit")
+def install_precommit(
+    force: bool = typer.Option(False, "--force", help="replace a pre-commit hook jobwright doesn't manage"),
+) -> None:
+    """Install a git pre-commit hook that stages the regenerated catalog with the job docs.
+
+    Without it, a job doc can land without its catalog; the committed catalog goes stale,
+    and every worktree branched from that commit inherits the drift as phantom
+    uncommitted changes once the PostToolUse hook rebuilds.
+    """
+    _cfg, root = _load()
+
+    try:
+        hooks_dir = _hooks_dir(root)
+    except (RuntimeError, OSError) as exc:
+        typer.secho(f"Not a git repo (or git unavailable): {exc}", fg=typer.colors.RED)
+        raise typer.Exit(2) from None
+
+    template = Path(__file__).parent / "_templates" / "repo" / "pre-commit.sh"
+    target = hooks_dir / "pre-commit"
+    if target.exists() and PRECOMMIT_MARKER not in target.read_text(errors="replace") and not force:
+        typer.secho(f"✗ {target} already exists and jobwright doesn't manage it.", fg=typer.colors.RED)
+        typer.echo(
+            "  Refusing to clobber it. Either append the jobwright logic to your hook:\n"
+            f"    {template}\n"
+            "  ...or re-run with --force to replace it."
+        )
+        raise typer.Exit(1)
+
+    body = template.read_text()
+    hooks_dir.mkdir(parents=True, exist_ok=True)
+    target.write_text(body)
+    target.chmod(0o755)
+
+    typer.secho(f"✓ Installed {target}", fg=typer.colors.GREEN)
+    typer.echo(
+        "  Runs only for commits touching the jobs dir, and never blocks a commit.\n"
+        "  This hooks dir is shared by every linked worktree, so all sessions are covered."
+    )
 
 
 @app.command("gen-agents")
