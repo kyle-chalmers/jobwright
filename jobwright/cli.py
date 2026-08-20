@@ -227,8 +227,12 @@ def _ask(label: str, default: str, check) -> str:
 def init(
     yes: bool = typer.Option(False, "--yes", "-y", help="accept the detected proposal, ask nothing"),
     force: bool = typer.Option(False, "--force", help="replace an existing jobwright.config.yaml"),
+    no_claude_settings: bool = typer.Option(
+        False, "--no-claude-settings", help="don't touch the repo's .claude/settings.json"
+    ),
 ) -> None:
     """Set up jobwright here — detect your platform, ask at most 5 questions, write a validated config."""
+    from . import claudesettings
     from .config import (
         PLATFORM_KINDS,
         WAREHOUSE_DIALECTS,
@@ -324,17 +328,76 @@ def init(
         typer.secho(f"refusing to write an invalid config: {exc}", fg=typer.colors.RED)
         raise typer.Exit(2) from None
 
+    # Preflight the settings file BEFORE writing the config: a malformed settings.json
+    # should surface while nothing has changed, not halfway through setup.
+    if not no_claude_settings:
+        try:
+            claudesettings.preflight(root)
+        except claudesettings.SettingsError as exc:
+            typer.secho(f"refusing to start: {exc}", fg=typer.colors.RED)
+            raise typer.Exit(2) from None
+
     (root / CONFIG_FILENAME).write_text(text)
     typer.secho(f"\nWrote {CONFIG_FILENAME}:", fg=typer.colors.GREEN)
     typer.echo(
         f"  platform {cfg.platform.kind} · deploys: {cfg.platform.deploy_model} · jobs in {cfg.project.jobs_dir}/"
     )
     typer.echo(
-        "  Commented defaults inside cover the rest (ticket links, governance fields, exceptions) — edit anytime.\n"
-        "Next: `jobwright doctor` to verify, then `jobwright jobs-index` to build the catalog.\n"
+        "  Commented defaults inside cover the rest (ticket links, governance fields, exceptions) — edit anytime."
+    )
+
+    if not no_claude_settings:
+        _configure_claude(root, force=False)
+
+    typer.echo(
+        "\nNext: `jobwright doctor` to verify, then `jobwright jobs-index` to build the catalog.\n"
         "Then: `jobwright install-precommit` — keeps the generated catalog committed with the job\n"
         "  docs, so a stale catalog never shows up as phantom uncommitted changes in a worktree."
     )
+
+
+def _configure_claude(root: Path, force: bool) -> bool:
+    """Merge the plugin keys into the repo's .claude/settings.json. Returns False on conflict."""
+    from . import claudesettings
+
+    try:
+        res = claudesettings.configure(root, force=force)
+    except claudesettings.SettingsError as exc:
+        typer.secho(f"\n.claude/settings.json not updated:\n{exc}", fg=typer.colors.YELLOW)
+        return False
+
+    rel = res.path.relative_to(root)
+    if not res.changed:
+        typer.echo(f"  {rel}: {res.message}")
+        return True
+
+    typer.secho(f"  {rel}: {res.message} — jobwright now travels with this repo.", fg=typer.colors.GREEN)
+    if claudesettings.is_git_ignored(res.path, root):
+        typer.secho(
+            f"  note: {rel} is git-ignored, so teammates won't get it. Un-ignore it to share jobwright.",
+            fg=typer.colors.YELLOW,
+        )
+    else:
+        typer.echo(f"  commit it:  git add {rel}")
+    return True
+
+
+@app.command("configure-claude")
+def configure_claude(
+    force: bool = typer.Option(
+        False, "--force", help="replace a conflicting marketplace entry / re-enable a disabled plugin"
+    ),
+) -> None:
+    """Write the repo's .claude/settings.json so the plugin travels with the repo.
+
+    Idempotent and safe to re-run: it merges two keys, never overwrites a conflicting
+    value, and leaves the file untouched when the result would be unchanged.
+    """
+    from . import claudesettings
+
+    root = claudesettings.repo_root()
+    if not _configure_claude(root, force=force):
+        raise typer.Exit(1)
 
 
 @app.command("new-job")

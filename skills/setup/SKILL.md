@@ -28,14 +28,21 @@ the wizard pre-fills every answer from what it finds, so a typical setup is 5 co
    before it is written, including the interdependent keys (where job definitions live depends on
    how the platform deploys), so a broken combination is rejected with a clear error instead of
    surfacing later.
-4. Verify: `jobwright doctor`. A missing platform CLI is **not** fatal — every file-based check
+4. `jobwright init` also writes the repo's `.claude/settings.json` (marketplace + enabled
+   plugin + `autoUpdate`) so jobwright travels with the repo. **Tell the user to commit it** —
+   writing the file is not the same as their team getting it. It merges rather than clobbers,
+   and it reports rather than overwrites when an entry already conflicts. Pass
+   `--no-claude-settings` if they'd rather manage that file themselves; run
+   `jobwright configure-claude` on its own to add or repair it later.
+5. Verify: `jobwright doctor`. A missing platform CLI is **not** fatal — every file-based check
    (validation, catalog, compliance scan) still works; doctor names exactly what the live steps
    (diff, run status) would need. Degrade, don't die.
-5. Build the catalog: `jobwright jobs-index` (writes `JOBS.md` + `OBJECTS.md`).
-6. Optional rulebook: `jobwright gen-agents` — writes `AGENTS.jobwright.md` by default so an
+6. Build the catalog: `jobwright jobs-index` (writes `JOBS.md` + `OBJECTS.md`).
+7. Optional rulebook: `jobwright gen-agents` — writes `AGENTS.jobwright.md` by default so an
    existing `AGENTS.md` is never overwritten; pass `-o AGENTS.md` only when the repo has none.
 
 ## Done when
 
-`jobwright doctor` is green (or degraded only on live-CLI reachability), `JOBS.md` exists, and the
-session-start banner confirms the deploy-safety guard is active. Next step: `/start-job <ticket>`.
+`jobwright doctor` is green (or degraded only on live-CLI reachability), `JOBS.md` exists,
+`.claude/settings.json` is written **and staged for commit**, and the session-start banner
+confirms the deploy-safety guard is active. Next step: `/start-job <ticket>`.
