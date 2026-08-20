@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "jobwright",
   "displayName": "jobwright",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "description": "Govern, validate, and safely ship data-orchestration jobs (Databricks, Airflow, dbt, Snowflake Tasks) with Claude Code: one front-door skill for the job lifecycle, a jobs index, architecture-compliance scanning, a live-vs-repo deploy-safety guard, and per-job validation.",
   "author": {
     "name": "Kyle Chalmers"

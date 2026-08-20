@@ -63,8 +63,9 @@ cannot ride along.
 - `bash bin/selftest.sh` is green (ruff + tests + adapter contract + skill leak check +
   shape gate + artifact scan).
 - `jobwright.config.yaml` is gitignored (only `jobwright.config.example.yaml` ships).
-- Version bumped consistently in `pyproject.toml`, `.claude-plugin/plugin.json`, and
-  `jobwright/__init__.py` — the selftest asserts all three agree; `CHANGELOG` updated.
+- Version bumped with `bin/set-version.py X.Y.Z`, which sets all three files that must
+  agree (`pyproject.toml`, `.claude-plugin/plugin.json`, `jobwright/__init__.py`). The
+  selftest asserts they match; `CHANGELOG` updated.
 - Build + smoke test the wheel: `python -m build && pipx run --spec dist/*.whl jobwright doctor`.
 
 ## 4. Release

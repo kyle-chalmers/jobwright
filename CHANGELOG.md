@@ -3,9 +3,56 @@
 All notable changes to jobwright are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions follow semver.
 
-## [Unreleased]
+## [0.2.0] — 2026-08-20
+
+**Re-released after a history rewrite. Do not pull — re-clone.** Releases 0.0.1, 0.1.0 and
+0.1.4 were removed from PyPI; `main`'s history was rewritten, so old clones cannot fast-forward.
+
+### Migrating from 0.1.x
+
+1. Delete your clone and re-clone; old commits no longer exist upstream.
+2. Reinstall the plugin **at project scope**, from inside the repo whose jobs it governs:
+   `claude plugin marketplace add kyle-chalmers/jobwright --scope project` then
+   `claude plugin install jobwright@jobwright --scope project`.
+3. Run `jobwright configure-claude` and commit `.claude/settings.json`.
+4. `pip uninstall jobwright` is optional — the plugin now provisions the CLI on demand, so a
+   global install is no longer needed (it still works, and still wins if present).
+
+### Removed
+- **Org-specific values, tree-wide and from history.** Two internal ticket-key prefixes across
+  9 files, an internal object-naming convention in the README example, and provenance detail in
+  `docs/PUBLISHING.md`. Most seriously, the leak gate itself had been written as a literal list
+  of the internal names it hunted — including two cloud account IDs — and excluded its own two
+  files from its own search, so it could never fire on them.
+
+### Changed
+- **The front door is the plugin, installed at project scope.** The README led with
+  `pip install`; the plugin install was two commented-out lines and install scope went
+  unmentioned, so users silently got a user-global install. jobwright maps to one repo, one
+  team, one set of jobs — the install now matches.
+- **The CLI is provisioned on demand** by `bin/jobwright-plugin`, from the plugin's own bundled
+  source, so installing the plugin is genuinely the only step. Skills and hooks address it by
+  absolute path rather than relying on PATH order. The uvx cache is refreshed exactly when the
+  bundled version changes, because uvx keys on the source path and would otherwise keep serving
+  the pre-update CLI.
+- **The leak gate is shapes, never literals** (`bin/leak_scan.py`) — account IDs, credential
+  prefixes, chat IDs, private keys, home paths, emails, and ticket keys outside a documented
+  placeholder allowlist. Nothing in it is worth leaking, so it excludes no files, including its
+  own source and tests. It is Python rather than `grep -P`, which exits 2 on BSD grep and made
+  `if grep ...; then` read "clean" — a second silent-pass bug. Both modes now have tests that
+  assert the gate *fires*.
+- **The sdist has an explicit allowlist** and CI scans the built artifacts and their member
+  inventory. Only the wheel had a file policy before, which is how a local worktree checkout
+  once got packaged; a clean tree is not a clean package.
 
 ### Added
+- **`jobwright configure-claude`** — writes the repo's `.claude/settings.json` (marketplace,
+  enabled plugin, `autoUpdate`) so the plugin travels with the repo. Idempotent, merges rather
+  than clobbers, reports conflicts rather than overwriting them, refuses symlinked paths, and
+  writes atomically. Also runs at the end of `init` (`--no-claude-settings` opts out).
+- **`doctor` reports how the CLI was resolved**, so a cold uv-provisioned first call is
+  explainable rather than mysterious.
+- **`jobwright install-precommit`** — installs a git pre-commit hook that regenerates the jobs
 - **`jobwright install-precommit`** — installs a git pre-commit hook that regenerates the jobs
   catalog and stages it alongside the job docs that produced it. The catalog is derived, so when
   a job doc lands without it the committed catalog goes stale; every worktree branched from that
@@ -26,11 +73,9 @@ Hygiene + adoption release, shipped alongside the same hardening pass across the
 > Consumer repos that vendor `deploy_safety.py` are unaffected (the vendored copy is theirs).
 
 ### Fixed
-- **Scrubbed an internal object name** that had slipped into the public README example and a
-  graph-layer test (fix-forward; replaced with a generic name). The release-time leak audit in
-  `docs/PUBLISHING.md` now also runs on every `bin/selftest.sh` invocation — mechanically
-  enforced, with the missed term added to the pattern — so a leak fails CI instead of waiting
-  for a release audit.
+- **Generic naming in the README example and a graph-layer test.** The release-time audit in
+  `docs/PUBLISHING.md` now also runs on every `bin/selftest.sh` invocation, so it fails CI
+  instead of waiting for a release. (Superseded in 0.2.0 — see below.)
 
 ### Added
 - **System-evolution retro** at the end of `/safe-deploy` (ported from ticketwright's `/ship`
