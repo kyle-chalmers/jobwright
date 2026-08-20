@@ -17,7 +17,7 @@ def _cfg(tmp_path: Path):
 
     return Config.from_dict({
         "schema_version": 1,
-        "project": {"name": "T", "key_prefixes": ["BI"], "jobs_dir": "jobs"},
+        "project": {"name": "T", "key_prefixes": ["JOB"], "jobs_dir": "jobs"},
         "platform": {"kind": "databricks", "deploy_model": "api-reset",
                      "job_def_dirs": {"dev": "databricks/job_definitions/dev",
                                       "prod": "databricks/job_definitions/prod"}},
@@ -68,7 +68,7 @@ def test_session_start_emits_only_inside_repo(tmp_path):
 def test_regenerate_index_hook_writes_catalog(tmp_path):
     # minimal repo: config + one job, no JOBS.md yet
     (tmp_path / "jobwright.config.yaml").write_text(
-        "schema_version: 1\nproject:\n  key_prefixes: [BI]\n  jobs_dir: jobs\n"
+        "schema_version: 1\nproject:\n  key_prefixes: [JOB]\n  jobs_dir: jobs\n"
         "platform:\n  kind: databricks\n  deploy_model: api-reset\nwarehouse:\n  dialect: snowflake\n"
     )
     job = tmp_path / "jobs" / "JOB-7_Thing"

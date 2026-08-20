@@ -33,6 +33,7 @@ dev = [
     "ruff>=0.6",
     "pytest>=8",
     "pre-commit>=4",
+    "build>=1.2",
 ]
 
 [project.urls]
@@ -50,6 +51,37 @@ jobwright = "jobwright.cli:app"
 # plugin marketplace (git), NOT the wheel — the guard reads destructive_patterns from the
 # Python adapter classes (which ARE in the wheel), so the CLI works pip-installed alone.
 packages = ["jobwright"]
+
+[tool.hatch.build.targets.sdist]
+# Explicit allowlist. Without one, hatchling sweeps the whole working tree into the
+# sdist — which is how a local .claude/worktrees/ checkout once got packaged. The sdist
+# is what actually ships, so it gets a narrower policy than "whatever is lying around".
+include = [
+  "/jobwright",
+  "/adapters",
+  "/skills",
+  "/commands",
+  "/hooks",
+  "/.claude-plugin",
+  "/examples",
+  "/tests",
+  "/bin",
+  "/docs",
+  "/README.md",
+  "/CHANGELOG.md",
+  "/CONTRIBUTING.md",
+  "/LICENSE",
+  "/pyproject.toml",
+  "/jobwright.config.example.yaml",
+]
+exclude = [
+  "**/.claude",
+  "**/__pycache__",
+  "**/.pytest_cache",
+  "**/.ruff_cache",
+  "**/.ai-friend-review",
+  "**/.DS_Store",
+]
 
 [tool.ruff]
 target-version = "py310"

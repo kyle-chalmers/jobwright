@@ -31,7 +31,7 @@ jobwright jobs-index  # build the catalog: jobs/JOBS.md + OBJECTS.md
 Then work through the front door:
 
 ```
-/start-job JOB-813 "Revenue Report"
+/start-job JOB-1234 "Daily Revenue Rollup"
 ```
 
 One command owns the lifecycle — it recalls prior work from the catalog, scaffolds (or resumes)

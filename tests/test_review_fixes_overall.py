@@ -14,7 +14,7 @@ def _cfg(kind: str, deploy_model: str, tmp_path: Path):
 
     return Config.from_dict({
         "schema_version": 1,
-        "project": {"key_prefixes": ["BI"], "jobs_dir": "jobs"},
+        "project": {"key_prefixes": ["JOB"], "jobs_dir": "jobs"},
         "platform": {"kind": kind, "deploy_model": deploy_model,
                      "job_def_dirs": {"dev": "defs"}},
         "warehouse": {"dialect": "snowflake"},
@@ -63,7 +63,7 @@ def test_sql_ddl_missing_definition_fails(tmp_path):
     (job / "n.py").write_text("# JOB: JOB-6\n# TICKET: JOB-6\n# PURPOSE: x\n# STATUS: ACTIVE\nx = 1\n")
     (tmp_path / "defs").mkdir()  # empty -> no .sql for JOB-6
     cfg = Config.from_dict({
-        "schema_version": 1, "project": {"key_prefixes": ["BI"], "jobs_dir": "jobs"},
+        "schema_version": 1, "project": {"key_prefixes": ["JOB"], "jobs_dir": "jobs"},
         "platform": {"kind": "snowflake_tasks", "deploy_model": "sql-ddl", "job_def_dirs": {"dev": "defs"}},
         "warehouse": {"dialect": "snowflake"},
     })
@@ -84,7 +84,7 @@ def test_cli_rejects_bad_format(tmp_path):
     if not shutil.which("jobwright"):
         return
     (tmp_path / "jobwright.config.yaml").write_text(
-        "schema_version: 1\nproject:\n  key_prefixes: [BI]\nplatform:\n  kind: databricks\n  deploy_model: api-reset\nwarehouse:\n  dialect: snowflake\n"
+        "schema_version: 1\nproject:\n  key_prefixes: [JOB]\nplatform:\n  kind: databricks\n  deploy_model: api-reset\nwarehouse:\n  dialect: snowflake\n"
     )
     proc = subprocess.run(["jobwright", "check", "architecture", ".", "--format", "xml"],
                           cwd=str(tmp_path), capture_output=True, text=True)

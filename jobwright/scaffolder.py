@@ -17,7 +17,7 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 _TEMPLATES = Path(__file__).parent / "_templates"
 
-# A ticket key like JOB-1234 / DAG-0028 / JOB-42. Deliberately strict — `ticket` flows
+# A ticket key like JOB-1234 / DAG-0028 / ABC-42. Deliberately strict — `ticket` flows
 # into file paths, so anything with a slash/dot/`..` is rejected (no path traversal).
 _TICKET_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]*-\d+$")
 

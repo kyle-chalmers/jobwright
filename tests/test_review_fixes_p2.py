@@ -19,7 +19,7 @@ def _cfg(jobs_dir="jobs"):
 
     return Config.from_dict({
         "schema_version": 1,
-        "project": {"key_prefixes": ["BI"], "jobs_dir": jobs_dir},
+        "project": {"key_prefixes": ["JOB"], "jobs_dir": jobs_dir},
         "platform": {"kind": "databricks", "deploy_model": "api-reset",
                      "job_def_dirs": {"dev": "databricks/job_definitions/dev"}},
         "warehouse": {"dialect": "snowflake"},
@@ -33,7 +33,7 @@ def _cfg(jobs_dir="jobs"):
 def test_scaffolder_rejects_traversal_ticket(tmp_path):
     from jobwright.scaffolder import new_job
 
-    for bad in ("../evil", "BI/../../etc", "..", "BI_NoNumber"):
+    for bad in ("../evil", "JOB/../../etc", "..", "JOB_NoNumber"):
         try:
             new_job(_cfg(), tmp_path, bad, "x", today="2026-01-01")
             raise AssertionError(f"expected ValueError for ticket {bad!r}")
@@ -59,7 +59,7 @@ def test_gen_agents_rejects_escaping_output(tmp_path):
     if not shutil.which("jobwright"):
         return  # console script not installed in this env; skip
     (tmp_path / "jobwright.config.yaml").write_text(
-        "schema_version: 1\nproject:\n  key_prefixes: [BI]\nplatform:\n  kind: databricks\n  deploy_model: api-reset\nwarehouse:\n  dialect: snowflake\n"
+        "schema_version: 1\nproject:\n  key_prefixes: [JOB]\nplatform:\n  kind: databricks\n  deploy_model: api-reset\nwarehouse:\n  dialect: snowflake\n"
     )
     proc = subprocess.run(["jobwright", "gen-agents", "-o", "../escaped.md"], cwd=str(tmp_path),
                           capture_output=True, text=True)
@@ -72,7 +72,7 @@ def test_gen_agents_rejects_escaping_output(tmp_path):
 # --------------------------------------------------------------------------- #
 def test_regen_hook_ignores_substring_sibling_dir(tmp_path):
     (tmp_path / "jobwright.config.yaml").write_text(
-        "schema_version: 1\nproject:\n  key_prefixes: [BI]\n  jobs_dir: jobs\n"
+        "schema_version: 1\nproject:\n  key_prefixes: [JOB]\n  jobs_dir: jobs\n"
         "platform:\n  kind: databricks\n  deploy_model: api-reset\nwarehouse:\n  dialect: snowflake\n"
     )
     sibling = tmp_path / "jobsX" / "JOB-1_X"   # contains the substring "jobs" but isn't the jobs dir

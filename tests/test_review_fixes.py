@@ -129,7 +129,7 @@ def test_validate_job_fails_when_required_def_missing(tmp_path):
     (tmp_path / "databricks" / "job_definitions" / "prod").mkdir(parents=True)  # empty -> no def for JOB-9
     cfg = Config.from_dict({
         "schema_version": 1,
-        "project": {"key_prefixes": ["BI"]},
+        "project": {"key_prefixes": ["JOB"]},
         "platform": {"kind": "databricks", "deploy_model": "api-reset",
                      "job_def_dirs": {"prod": "databricks/job_definitions/prod"}},
         "warehouse": {"dialect": "snowflake"},

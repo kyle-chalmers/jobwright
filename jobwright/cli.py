@@ -149,7 +149,7 @@ def jobs_index(
 
 @app.command("diff-job")
 def diff_job(
-    ref: str = typer.Argument(..., help="ticket / job name / folder (e.g. JOB-813 or JOB-813_Revenue)"),
+    ref: str = typer.Argument(..., help="ticket / job name / folder (e.g. JOB-1234 or JOB-1234_Revenue)"),
 ) -> None:
     """Diff the LIVE job definition against the repo JSON (drift detection)."""
     from .platforms import get_adapter
@@ -483,7 +483,7 @@ def check_deps(files: list[str] = typer.Argument(..., help="notebook .py files w
 
 @app.command("validate-job")
 def validate_job_cmd(
-    job_dir: str = typer.Argument(..., help="a job folder, e.g. jobs/JOB-813_Revenue"),
+    job_dir: str = typer.Argument(..., help="a job folder, e.g. jobs/JOB-1234_Revenue"),
     offline: bool = typer.Option(False, "--offline", help="skip the network dependency-vuln check"),
     fmt: str = typer.Option("md", "--format", help="md|json"),
 ) -> None:

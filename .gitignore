@@ -17,6 +17,10 @@ venv/
 # OS
 .DS_Store
 
+# Local Claude Code session state (worktrees, transcripts). Never commit or package:
+# an unignored .claude/ is how a whole worktree checkout once ended up inside an sdist.
+.claude/
+
 # Never commit a real, org-specific config at the repo root.
 # Root-anchored so the example fixtures under examples/ ARE tracked.
 # The documented template lives at jobwright.config.example.yaml.

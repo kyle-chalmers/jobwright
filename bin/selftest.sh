@@ -26,14 +26,36 @@ if [ -d skills ] && [ -n "$(find skills -name '*.md' -print -quit 2>/dev/null)" 
   fi
 fi
 
-echo "==> org-name leak check (the PUBLISHING.md audit, enforced mechanically)"
-# Every hit is a blocker; this file and PUBLISHING.md necessarily contain the terms.
-if git grep -niE 'legacy_store|legacy_jobs|job_automation|monitor.?bot|(vw_)?customer_ledger|xoxb-|REGION|REDACTED-ACCOUNT-ID|REDACTED-ACCOUNT-ID|C0[0-9A-Z]{8,}' \
-    -- ':(exclude)docs/PUBLISHING.md' ':(exclude)bin/selftest.sh' >/dev/null 2>&1; then
-  echo "FAIL: an org-specific value leaked into the package — see docs/PUBLISHING.md section 2"
-  git grep -niE 'legacy_store|legacy_jobs|job_automation|monitor.?bot|(vw_)?customer_ledger|xoxb-|REGION|REDACTED-ACCOUNT-ID|REDACTED-ACCOUNT-ID|C0[0-9A-Z]{8,}' \
-    -- ':(exclude)docs/PUBLISHING.md' ':(exclude)bin/selftest.sh' || true
-  exit 1
+echo "==> secret-shape leak check"
+# Shapes, never literals — see bin/leak_scan.py for why, and why it is Python and not
+# `grep -P` (BSD grep has no -P; `if grep ...` then reads exit 2 as "clean" and fails open).
+DENY_ARG=()
+if [ -n "${JOBWRIGHT_LEAK_DENYLIST:-}" ]; then
+  DENY_ARG=(--denylist "$JOBWRIGHT_LEAK_DENYLIST")
+  echo "    (plus private denylist)"
+fi
+"$PY" bin/leak_scan.py --git . "${DENY_ARG[@]}" || exit 1
+
+# Artifact scan: a clean tree is not a clean package — the sdist ships a wider file set
+# than the checks above inspect. Opt-in (it builds), so CI runs it once in a dedicated
+# packaging job rather than in every Python matrix leg.
+if [ "${JOBWRIGHT_SELFTEST_ARTIFACTS:-0}" = "1" ]; then
+  echo "==> artifact scan (built sdist + wheel)"
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' EXIT
+  "$PY" -m build -o "$tmp/dist" >/dev/null 2>&1 || { echo "FAIL: python -m build"; exit 1; }
+
+  # Member inventory: stray local state must never ride along.
+  if tar -tzf "$tmp"/dist/*.tar.gz | grep -Eq '/\.claude/|__pycache__|\.pytest_cache|\.ruff_cache|worktrees/|\.ai-friend-review'; then
+    echo "FAIL: the sdist contains local state that must not ship:"
+    tar -tzf "$tmp"/dist/*.tar.gz | grep -E '/\.claude/|__pycache__|\.pytest_cache|\.ruff_cache|worktrees/|\.ai-friend-review'
+    exit 1
+  fi
+
+  mkdir -p "$tmp/x" && tar -xzf "$tmp"/dist/*.tar.gz -C "$tmp/x"
+  ( cd "$tmp" && unzip -qo dist/*.whl -d x ) || { echo "FAIL: unzip wheel"; exit 1; }
+  "$PY" bin/leak_scan.py --tree "$tmp/x" "${DENY_ARG[@]}" || {
+    echo "FAIL: a sensitive shape is present in the BUILT ARTIFACTS"; exit 1; }
 fi
 
 echo "==> v2 skill surface (7 skills + deprecated aliases route correctly)"

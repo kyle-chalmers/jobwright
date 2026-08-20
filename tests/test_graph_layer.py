@@ -30,7 +30,7 @@ def test_object_filename_and_layer():
     assert object_filename("ANALYTICS.VW_CUSTOMER") == "ANALYTICS.VW_CUSTOMER.md"
     assert object_filename("db:weird/name") == "db.weird.name.md"  # path-unsafe chars folded
     assert object_layer("ANALYTICS.VW_CUSTOMER") == "ANALYTICS"
-    assert object_layer("DB.ANALYTICS.VW_CUSTOMER") == "MARTS"  # schema, not database
+    assert object_layer("DB.MARTS.VW_CUSTOMER_LEDGER") == "MARTS"  # schema, not database
     assert object_layer("bare_name") == "object"
 
 

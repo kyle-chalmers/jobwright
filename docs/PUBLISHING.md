@@ -1,45 +1,70 @@
 # Publishing jobwright
 
-jobwright was generalized from a production data-jobs repo. **Before any public
-release** (PyPI or the Claude Code plugin marketplace), clear this gate.
+jobwright was generalized from a private production repo. **Before any public release**
+(PyPI or the Claude Code plugin marketplace), clear this gate.
 
-## 1. Employer / security sign-off (required)
+## 1. Sign-off (required)
 
-Because the kit derives from a private production repo, get explicit approval from your
-employer / security team before publishing. The patterns, safety model, and architecture
-here are generic by design — but the *provenance* warrants a sign-off, not an assumption.
+Because the kit derives from a private repo, get explicit approval from the owning
+organization before publishing. The patterns, safety model, and architecture here are
+generic by design — but the *provenance* warrants a sign-off, not an assumption.
 
 ## 2. Leak audit (must return nothing)
 
-The package must contain **zero** org-specific values. Run before tagging a release
-(uses `git grep` so the pathspec exclusion works; this file is excluded because it
-necessarily contains the search terms as its pattern):
+The package must contain **zero** org-specific values.
+
+**This file contains no denylist.** That is deliberate: a gate written as a literal list of
+the secrets it looks for *is* a disclosure, and a gate that excludes itself from its own
+search can never fire on its own contents. Both mistakes shipped here once. The audit is
+therefore split in two.
+
+### Layer 1 — shape-based, committed, always on
+
+`bin/selftest.sh` greps for the *shapes* of sensitive values, never their values: cloud
+account IDs, credential prefixes, chat/workspace IDs, private-key headers, local home
+paths, email addresses, and ticket keys whose prefix is not a documented placeholder
+(`JOB`, `DAG`, `ABC`, `ENG`, `PROJ`). Nothing in that pattern set is worth leaking, so the
+gate excludes no files — including itself.
+
+It uses `git grep -P`, not `-E`. `git grep`'s ERE engine does **not** support `\b`, so an
+`-E` version of these patterns silently matches nothing and reports success.
+
+### Layer 2 — private denylist, opt-in
+
+To also check for literal org-specific strings, point the gate at an untracked file:
 
 ```bash
-# from the jobwright repo root — every hit is a blocker
-git grep -niE 'legacy_store|legacy_jobs|job_automation|monitor.?bot|\
-(vw_)?customer_ledger|xoxb-|REGION|REDACTED-ACCOUNT-ID|REDACTED-ACCOUNT-ID|C0[0-9A-Z]{8,}' \
-  -- ':(exclude)docs/PUBLISHING.md' ':(exclude)bin/selftest.sh'
+JOBWRIGHT_LEAK_DENYLIST=~/.config/jobwright/denylist.txt bash bin/selftest.sh
 ```
 
-This same grep now runs in `bin/selftest.sh` on every test run, so a leak fails
-CI instead of waiting for the release-time audit. (`customer_ledger` was added after
-`VW_CUSTOMER` slipped into the public README and a test — caught 2026-07.)
+One extended-regex alternation per line; blank lines and `#` comments ignored. Keep that
+file outside the repo. Never commit it, and never paste its contents into an issue, a PR,
+or a commit message.
 
 Specifically confirm NONE of these ever ship in the package:
 
 - Real schema names, job names, account locators, role/warehouse names.
-- Slack channel IDs, the GitHub App identity, service-principal IDs, secret-scope names.
-- Any description of an internal PR-bypass / auth technique.
-- The actual production monitor code (kept private; see the deferred self-monitoring module).
+- Cloud account IDs, service-principal IDs, secret-scope names, chat channel IDs.
+- Internal repository, service, or team names — including in **commit messages**, which the
+  file-content gate cannot see.
 
 All org-specific values belong in a consumer's own `jobwright.config.yaml`, never in the code.
 
+### Scan the built artifacts, not just the tree
+
+The tree passing is not the same as the package being clean: the sdist is what actually
+ships, and it is built from a wider file set than `git grep` inspects. `bin/selftest.sh`
+builds the distribution and applies the same gate to the unpacked sdist and wheel, and
+asserts the archive member inventory so stray local state (`.claude/`, caches, worktrees)
+cannot ride along.
+
 ## 3. Pre-release checklist
 
-- `bash bin/selftest.sh` is green (ruff + tests + adapter-contract + skill leak check).
+- `bash bin/selftest.sh` is green (ruff + tests + adapter contract + skill leak check +
+  shape gate + artifact scan).
 - `jobwright.config.yaml` is gitignored (only `jobwright.config.example.yaml` ships).
-- Version bumped in `pyproject.toml` and `.claude-plugin/plugin.json`; `CHANGELOG` updated.
+- Version bumped consistently in `pyproject.toml`, `.claude-plugin/plugin.json`, and
+  `jobwright/__init__.py` — the selftest asserts all three agree; `CHANGELOG` updated.
 - Build + smoke test the wheel: `python -m build && pipx run --spec dist/*.whl jobwright doctor`.
 
 ## 4. Release
@@ -53,6 +78,5 @@ CI (`.github/workflows/ci.yml`) runs lint + tests on every push/PR. Releases:
      repo `jobwright`, workflow `publish.yml`, environment `pypi`.
    - Run the **Publish to PyPI** workflow (Actions tab → Run workflow), or switch its trigger
      to `release: [published]` so it fires automatically on each GitHub release.
-   - `pip install jobwright` / `uvx jobwright` then work everywhere.
-3. **Claude Code plugin** — already live from the repo: consumers run
-   `/plugin marketplace add kyle-chalmers/jobwright` → `/plugin install jobwright@jobwright`.
+3. **Claude Code plugin** — already live from the repo. Consumers install it **at project
+   scope** so it travels with the repo; see the README's Install section.

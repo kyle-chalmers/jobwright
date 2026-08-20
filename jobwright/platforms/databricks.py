@@ -112,7 +112,7 @@ class DatabricksAdapter(JobPlatformAdapter):
     def _find_repo_def_file(self, ref: str) -> Path | None:
         """Resolve a repo job-definition JSON by name, filename stem, or ticket key."""
         ref_l = ref.lower()
-        ticket = ref.split("_", 1)[0].lower()  # e.g. "JOB-813" from "JOB-813_Revenue"
+        ticket = ref.split("_", 1)[0].lower()  # e.g. "JOB-1234" from "JOB-1234_Revenue"
         candidates: list[Path] = []
         for d in self._job_def_dirs():
             if not d.is_dir():

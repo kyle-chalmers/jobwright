@@ -68,7 +68,7 @@ def test_consumer_shaped_config_is_clean():
     cfg = Config.from_dict(
         {
             "schema_version": 1,
-            "project": {"name": "Acme BI Jobs", "key_prefixes": ["BI", "DI", "DP"], "jobs_dir": "jobs",
+            "project": {"name": "Acme Data Jobs", "key_prefixes": ["JOB", "DAG", "ABC"], "jobs_dir": "jobs",
                         "ticket_url_template": "https://acme.atlassian.net/browse/{id}"},
             "platform": {"kind": "databricks", "profile": "prod", "deploy_model": "api-reset",
                          "job_def_dirs": {"dev": "databricks/job_definitions/dev",
@@ -91,7 +91,7 @@ def test_wizard_detects_dbt_and_jobs_layout(tmp_path):
     det = wizard.detect(tmp_path, home=tmp_path)  # home=tmp_path: ignore this machine's real CLI configs
     assert det.platform == "dbt"
     assert det.jobs_dir == "jobs"
-    assert det.key_prefixes == ["BI"]
+    assert det.key_prefixes == ["JOB"]
 
 
 def test_wizard_detects_job_def_dirs(tmp_path):
