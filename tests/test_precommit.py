@@ -203,4 +203,30 @@ def test_hook_never_blocks_a_commit_when_jobwright_is_missing(tmp_path):
         env={**os.environ, "PATH": bare},
     )
     assert proc.returncode == 0, "a missing jobwright must never block a commit"
-    assert "not on PATH" in proc.stderr, "should say why the catalog wasn't regenerated"
+    assert "no CLI available" in proc.stderr, "should say why the catalog wasn't regenerated"
+
+
+def test_hook_uses_an_explicit_jobwright_bin_when_path_has_none(tmp_path):
+    """The plugin-only case: no `jobwright` on PATH, because the plugin provisions it.
+
+    This hook runs outside Claude Code, so it cannot rely on the plugin's PATH injection.
+    It must still find a CLI when one is reachable by another route.
+    """
+    repo = _repo(tmp_path)
+    assert _cli("install-precommit", cwd=repo).returncode == 0
+
+    doc = _make_catalog_stale(repo)
+    _git("add", "--", str(doc.relative_to(repo)), cwd=repo)
+    bare = "/usr/bin:/bin"
+    assert shutil.which("jobwright", path=bare) is None, "precondition: jobwright unreachable"
+
+    real = shutil.which("jobwright")
+    assert real, "precondition: a jobwright exists in the test environment"
+    proc = subprocess.run(
+        ["sh", str(_hook(repo))],
+        cwd=str(repo), capture_output=True, text=True, timeout=120,
+        env={**os.environ, "PATH": bare, "JOBWRIGHT_BIN": real},
+    )
+    assert proc.returncode == 0
+    assert "no CLI available" not in proc.stderr, "JOBWRIGHT_BIN should have been used"
+    assert (repo / "jobs" / "JOBS.md").is_file()

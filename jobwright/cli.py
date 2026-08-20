@@ -7,6 +7,7 @@ place. Phase 0 ships: ``doctor``, ``jobs-index`` (build/check), and ``diff-job``
 from __future__ import annotations
 
 import contextlib
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -53,6 +54,18 @@ def version() -> None:
     typer.echo(__version__)
 
 
+def _cli_provenance() -> str:
+    """How this CLI was resolved — a plugin-provisioned run looks different from a pip one."""
+    if os.environ.get("JOBWRIGHT_BIN"):
+        return f"{sys.executable} (via JOBWRIGHT_BIN)"
+    exe = Path(sys.executable).resolve()
+    if "/uv/" in str(exe) or ".cache/uv" in str(exe):
+        return f"{exe} (provisioned by uv — plugin install)"
+    if "pipx" in str(exe):
+        return f"{exe} (provisioned by pipx)"
+    return str(exe)
+
+
 @app.command()
 def doctor() -> None:
     """Check config + environment: platform, profile, CLI availability, adapter."""
@@ -74,6 +87,9 @@ def doctor() -> None:
     typer.echo(f"  jobs_dir          = {cfg.project.jobs_dir}")
     typer.echo(f"  key_prefixes      = {', '.join(cfg.project.key_prefixes) or '(none)'}")
     typer.echo(f"  deprecated_deny   = {', '.join(cfg.architecture.deprecated_schema_deny) or '(none)'}")
+    # Where this CLI came from. Under a plugin install it is provisioned on demand, so a
+    # slow first call is explainable rather than mysterious.
+    typer.echo(f"  cli               = {_cli_provenance()}")
 
     ok = True
     # Interdependent keys (job_def_dirs vs dags_dir depends on deploy_model). Loading

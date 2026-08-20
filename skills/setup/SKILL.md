@@ -14,7 +14,9 @@ the wizard pre-fills every answer from what it finds, so a typical setup is 5 co
 
 ## Default mode — fresh repo
 
-1. Confirm the CLI is installed: `jobwright version` (install with `pip install jobwright` if missing).
+1. Confirm the CLI runs: `jobwright version`. Under a plugin install the plugin provisions it
+   on demand — there is nothing to install globally. If it fails, `jobwright doctor` names what's
+   missing (uv or pipx).
 2. If the repo already has job folders or a `jobwright.config.yaml`, switch to [adopt.md](adopt.md).
 3. Run the wizard:
    ```bash

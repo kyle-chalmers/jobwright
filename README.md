@@ -14,29 +14,59 @@ rebuild, architecture-compliance scanning, a per-job validation gate, and a depl
 that pauses for confirmation before destructive commands — so a stale-definition overwrite can't
 happen unattended.
 
-## Five-minute quickstart
+## Install
+
+jobwright is a **Claude Code plugin**, and it installs **per project** — it maps to one
+repo, one team, one set of jobs. From inside the repo whose jobs it should govern:
 
 ```bash
-pip install jobwright                # or: uvx jobwright
-# Claude Code plugin (skills + hooks):
-#   /plugin marketplace add kyle-chalmers/jobwright
-#   /plugin install jobwright@jobwright
-
-jobwright init        # the setup wizard: detects your platform, asks ≤5 questions,
-                      # writes a validated jobwright.config.yaml (rest = commented defaults)
-jobwright doctor      # verify config + environment (a missing CLI degrades, doesn't block)
-jobwright jobs-index  # build the catalog: jobs/JOBS.md + OBJECTS.md
+claude plugin marketplace add kyle-chalmers/jobwright --scope project
+claude plugin install jobwright@jobwright --scope project
 ```
 
-Then work through the front door:
+That writes the repo's own `.claude/settings.json`. **Commit it**, and jobwright travels
+with the repo:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "jobwright": {
+      "source": { "source": "github", "repo": "kyle-chalmers/jobwright" },
+      "autoUpdate": true
+    }
+  },
+  "enabledPlugins": { "jobwright@jobwright": true }
+}
+```
+
+`/setup` writes and commits that file for you, including the `autoUpdate` key — no CLI
+flag sets that one. Two things worth knowing about it:
+
+- **`autoUpdate` tracks the plugin's `version` string**, not tags. Bumping the version on
+  `main` moves everyone on their next session, released or not.
+- **Teammates still consent.** Trusting the repo registers the marketplace; Claude Code
+  then prompts each person to approve and install the plugin. Committing the file makes
+  jobwright *offered* to the team, not silently installed on their machines.
+
+Omit `--scope project` only if you want jobwright for yourself across every repo, in your
+own `~/.claude/settings.json`, rather than for this repo's team.
+
+**Requirements:** `python3` (the hooks are stdlib-only) and [uv](https://docs.astral.sh/uv/)
+or `pipx`, which the plugin uses to run its CLI on demand. Nothing to `pip install`.
+
+## First run
+
+In that repo:
 
 ```
-/start-job JOB-1234 "Daily Revenue Rollup"
+/setup                                       # ≤5 questions → config, catalog, guard active
+/start-job JOB-1234 "Daily Revenue Rollup"   # the front door
 ```
 
-One command owns the lifecycle — it recalls prior work from the catalog, scaffolds (or resumes)
-the job, drafts its documentation *from the code*, gates it with `jobwright validate-job`, and
-routes to `/safe-deploy` when it's ready to ship.
+`/setup` detects your platform and pre-fills every answer, so a typical setup is five
+confirmations. `/start-job` then owns the lifecycle — it recalls prior work from the
+catalog, scaffolds (or resumes) the job, drafts its documentation *from the code*, gates it
+with `jobwright validate-job`, and routes to `/safe-deploy` when it's ready to ship.
 
 ## The skills
 
@@ -114,21 +144,35 @@ two-seam model, deploy models, and how to add a platform (two files).
 
 ## CLI
 
+The plugin runs these for you; you rarely type them. They matter for CI, for scripting, and
+for repos that use jobwright without Claude Code.
+
 ```
 jobwright init [--yes] [--force] | doctor | jobs-index [--check]
           validate-job <folder> [--offline] | diff-job <job>
           check {syntax|job-defs|deps|architecture|docs} <paths>
           new-job <ticket> "<name>" | gen-agents
-          install-precommit [--force]
+          configure-claude [--force] | install-precommit [--force]
 ```
 
 `install-precommit` is worth running once per repo. The catalog is *derived* from the job
 folders, so a job doc that lands without its regenerated catalog leaves the committed catalog
 stale — and then every worktree branched from that commit inherits the drift, which the
 PostToolUse rebuild surfaces as phantom uncommitted changes in sessions that never touched
-those files. The hook regenerates and stages the catalog alongside the docs, only for commits
-touching the jobs dir, and never blocks a commit. It installs into the shared hooks dir, so one
-install covers every linked worktree.
+those files. The hook regenerates the catalog and stages it into the same commit as the docs
+that produced it. It is repo-gated, scoped to commits that touch the jobs dir, and fails open.
+
+## Installing without the plugin
+
+The plugin is the primary channel and the one to use with Claude Code — it provisions the CLI
+itself, so there is nothing to install globally. The PyPI package covers the cases it can't:
+running the deterministic engines from a shell or in CI, on machines with no Claude Code.
+
+```bash
+pip install jobwright     # or: uvx jobwright
+jobwright jobs-index      # catalog          — no Claude Code needed
+jobwright validate-job jobs/JOB-1234_Revenue --offline
+```
 
 ## Status
 

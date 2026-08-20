@@ -94,10 +94,16 @@ def main() -> int:
     except Exception:
         pass
 
-    # Fall back to the CLI on PATH.
-    if shutil.which("jobwright"):
+    # Fall back to the CLI. Prefer the plugin's own shim, resolved relative to this file,
+    # because under a plugin-only install there is no `jobwright` on PATH to find — the
+    # shim is what provisions it. PATH is only the last resort, for vendored copies.
+    shim = Path(__file__).resolve().parent.parent / "bin" / "jobwright-plugin"
+    cmd = [str(shim), "jobs-index"] if shim.is_file() else None
+    if cmd is None and shutil.which("jobwright"):
+        cmd = ["jobwright", "jobs-index"]
+    if cmd:
         with contextlib.suppress(Exception):
-            subprocess.run(["jobwright", "jobs-index"], cwd=str(root), capture_output=True, timeout=60)
+            subprocess.run(cmd, cwd=str(root), capture_output=True, timeout=60)
     return 0
 
 

@@ -45,13 +45,24 @@ if ! git diff --cached --name-only --diff-filter=ACMRD -- "$JOBS_DIR" 2>/dev/nul
   exit 0
 fi
 
-if ! command -v jobwright >/dev/null 2>&1; then
-  echo "jobwright: not on PATH — catalog NOT regenerated for this commit." >&2
-  echo "           run \`jobwright jobs-index\` and \`git commit --amend\` to fold it in." >&2
+# Resolve the CLI. This hook runs OUTSIDE Claude Code, so a plugin-only install has no
+# `jobwright` on PATH — the plugin's shim is what provisions it, and the plugin directory
+# is not a stable path to bake in. `uvx jobwright` is the portable form; an explicit
+# JOBWRIGHT_BIN or an installed CLI wins over it. Fail open in every case: a catalog hook
+# must never stand between someone and a commit.
+if [ -n "${JOBWRIGHT_BIN:-}" ]; then
+  JW=("$JOBWRIGHT_BIN")
+elif command -v jobwright >/dev/null 2>&1; then
+  JW=(jobwright)
+elif command -v uvx >/dev/null 2>&1; then
+  JW=(uvx --quiet jobwright)
+else
+  echo "jobwright: no CLI available (no jobwright, no uv) — catalog NOT regenerated." >&2
+  echo "           install uv, or run \`jobwright jobs-index\` and \`git commit --amend\`." >&2
   exit 0
 fi
 
-if ! jobwright jobs-index >/dev/null 2>&1; then
+if ! "${JW[@]}" jobs-index >/dev/null 2>&1; then
   echo "jobwright: \`jobs-index\` failed — catalog NOT regenerated for this commit." >&2
   echo "           run it manually to see the error." >&2
   exit 0

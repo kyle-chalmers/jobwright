@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# Run the jobwright CLI from the plugin's own bundled source.
+#
+# Skills and hooks call this by absolute path — "${CLAUDE_PLUGIN_ROOT}/bin/jobwright-plugin"
+# — deliberately. An earlier design put a shim named `jobwright` on PATH that looked for
+# "the real one, excluding itself"; that is fragile under symlinks, absolute-path
+# invocation, and duplicated PATH entries, and a mistake there means infinite recursion.
+# Addressing this script explicitly means nothing depends on PATH order.
+#
+# Resolving from the bundled source (not a pinned PyPI version) keeps the CLI and the
+# plugin in lockstep by construction, and means installing the plugin is genuinely the
+# only install step — no `pip install jobwright`, no chicken-and-egg where the manifest
+# names a version PyPI does not have yet.
+set -euo pipefail
+
+# Escape hatch: an explicit interpreter/binary wins over everything.
+if [ -n "${JOBWRIGHT_BIN:-}" ]; then
+  exec "$JOBWRIGHT_BIN" "$@"
+fi
+
+# Walk BASH_SOURCE through any symlinks to find where this script actually lives.
+source_path="${BASH_SOURCE[0]}"
+if [ "${source_path#*/}" = "$source_path" ]; then
+  source_path="$(command -v -- "$source_path")"
+fi
+while [ -L "$source_path" ]; do
+  source_dir="$(cd -P -- "$(dirname -- "$source_path")" && pwd)"
+  target="$(readlink "$source_path")"
+  case "$target" in
+    /*) source_path="$target" ;;
+    *)  source_path="$source_dir/$target" ;;
+  esac
+done
+source_dir="$(cd -P -- "$(dirname -- "$source_path")" && pwd)"
+plugin_root="$(cd -P -- "$source_dir/.." && pwd)"
+
+if command -v uvx >/dev/null 2>&1; then
+  # uvx caches the built environment keyed on the source path, and does NOT notice that
+  # the source changed — after a plugin update it will happily keep serving the OLD CLI.
+  # That is silent version skew, which is the exact class of bug jobwright exists to
+  # prevent, so refresh exactly once whenever the bundled version differs from what we
+  # last built. Steady-state calls stay on the warm cache.
+  version="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+              "$plugin_root/.claude-plugin/plugin.json" 2>/dev/null | head -1)"
+  stamp_dir="${CLAUDE_PLUGIN_DATA:-${XDG_CACHE_HOME:-$HOME/.cache}/jobwright}"
+  stamp="$stamp_dir/build-stamp"
+  want="${version:-unknown} $plugin_root"
+  refresh=()
+  if [ "${JOBWRIGHT_REFRESH:-0}" = "1" ] || [ "$(cat "$stamp" 2>/dev/null || true)" != "$want" ]; then
+    refresh=(--refresh)
+    mkdir -p "$stamp_dir" 2>/dev/null && printf '%s' "$want" > "$stamp" 2>/dev/null || true
+  fi
+  exec uvx --quiet "${refresh[@]}" --from "$plugin_root" jobwright "$@"
+fi
+
+if command -v pipx >/dev/null 2>&1; then
+  exec pipx run --spec "$plugin_root" jobwright "$@"
+fi
+
+# Last resort: an already-installed CLI. Never this script (that would recurse).
+resolved="$(PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -vxF "$source_dir" | paste -sd: -)" \
+            command -v jobwright 2>/dev/null || true)"
+if [ -n "$resolved" ] && [ "$(cd -P -- "$(dirname -- "$resolved")" && pwd)" != "$source_dir" ]; then
+  exec "$resolved" "$@"
+fi
+
+printf '%s\n' \
+  "jobwright needs uv or pipx to run its CLI from the plugin." \
+  "  install uv:   https://docs.astral.sh/uv/getting-started/installation/" \
+  "  or pipx:      https://pipx.pypa.io/stable/installation/" \
+  "  or set JOBWRIGHT_BIN to an existing jobwright executable." >&2
+exit 127
