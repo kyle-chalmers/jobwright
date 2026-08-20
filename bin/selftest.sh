@@ -34,7 +34,7 @@ if [ -n "${JOBWRIGHT_LEAK_DENYLIST:-}" ]; then
   DENY_ARG=(--denylist "$JOBWRIGHT_LEAK_DENYLIST")
   echo "    (plus private denylist)"
 fi
-"$PY" bin/leak_scan.py --git . "${DENY_ARG[@]}" || exit 1
+"$PY" bin/leak_scan.py --git . ${DENY_ARG[@]+"${DENY_ARG[@]}"} || exit 1
 
 # Artifact scan: a clean tree is not a clean package — the sdist ships a wider file set
 # than the checks above inspect. Opt-in (it builds), so CI runs it once in a dedicated
@@ -54,7 +54,7 @@ if [ "${JOBWRIGHT_SELFTEST_ARTIFACTS:-0}" = "1" ]; then
 
   mkdir -p "$tmp/x" && tar -xzf "$tmp"/dist/*.tar.gz -C "$tmp/x"
   ( cd "$tmp" && unzip -qo dist/*.whl -d x ) || { echo "FAIL: unzip wheel"; exit 1; }
-  "$PY" bin/leak_scan.py --tree "$tmp/x" "${DENY_ARG[@]}" || {
+  "$PY" bin/leak_scan.py --tree "$tmp/x" ${DENY_ARG[@]+"${DENY_ARG[@]}"} || {
     echo "FAIL: a sensitive shape is present in the BUILT ARTIFACTS"; exit 1; }
 fi
 

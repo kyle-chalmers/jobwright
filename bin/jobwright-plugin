@@ -50,7 +50,10 @@ if command -v uvx >/dev/null 2>&1; then
     refresh=(--refresh)
     mkdir -p "$stamp_dir" 2>/dev/null && printf '%s' "$want" > "$stamp" 2>/dev/null || true
   fi
-  exec uvx --quiet "${refresh[@]}" --from "$plugin_root" jobwright "$@"
+  # ${a[@]+"${a[@]}"}, not "${a[@]}": macOS ships bash 3.2, where set -u treats an empty
+  # array expansion as an unbound variable. That failed only on the *second* call, once
+  # the cache was warm and the array was empty.
+  exec uvx --quiet ${refresh[@]+"${refresh[@]}"} --from "$plugin_root" jobwright "$@"
 fi
 
 if command -v pipx >/dev/null 2>&1; then
