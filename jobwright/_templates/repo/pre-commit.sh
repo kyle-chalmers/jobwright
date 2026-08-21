@@ -50,19 +50,23 @@ fi
 # is not a stable path to bake in. `uvx jobwright` is the portable form; an explicit
 # JOBWRIGHT_BIN or an installed CLI wins over it. Fail open in every case: a catalog hook
 # must never stand between someone and a commit.
+# `set --`, not an array: this file is #!/bin/sh, and dash has no arrays. macOS /bin/sh is
+# bash in POSIX mode, which tolerates them, so an array passes locally and dies on Ubuntu.
+# A pre-commit hook receives no arguments, so clobbering "$@" is safe, and it keeps paths
+# with spaces intact where plain word-splitting would not.
 if [ -n "${JOBWRIGHT_BIN:-}" ]; then
-  JW=("$JOBWRIGHT_BIN")
+  set -- "$JOBWRIGHT_BIN"
 elif command -v jobwright >/dev/null 2>&1; then
-  JW=(jobwright)
+  set -- jobwright
 elif command -v uvx >/dev/null 2>&1; then
-  JW=(uvx --quiet jobwright)
+  set -- uvx --quiet jobwright
 else
   echo "jobwright: no CLI available (no jobwright, no uv) — catalog NOT regenerated." >&2
   echo "           install uv, or run \`jobwright jobs-index\` and \`git commit --amend\`." >&2
   exit 0
 fi
 
-if ! "${JW[@]}" jobs-index >/dev/null 2>&1; then
+if ! "$@" jobs-index >/dev/null 2>&1; then
   echo "jobwright: \`jobs-index\` failed — catalog NOT regenerated for this commit." >&2
   echo "           run it manually to see the error." >&2
   exit 0

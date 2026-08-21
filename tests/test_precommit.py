@@ -16,6 +16,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parent.parent
 FIXTURE = REPO / "examples" / "sample-databricks"
 MARKER = "# jobwright-managed pre-commit v1"
@@ -230,3 +232,20 @@ def test_hook_uses_an_explicit_jobwright_bin_when_path_has_none(tmp_path):
     assert proc.returncode == 0
     assert "no CLI available" not in proc.stderr, "JOBWRIGHT_BIN should have been used"
     assert (repo / "jobs" / "JOBS.md").is_file()
+
+
+def test_hook_template_is_posix_sh_not_bash():
+    """The template is #!/bin/sh and git runs it as such.
+
+    macOS /bin/sh is bash in POSIX mode, which tolerates bashisms — so an array or a
+    [[ ]] passes every local run and fails only on Ubuntu, where /bin/sh is dash. Check
+    against a real POSIX shell whenever one is available.
+    """
+    template = REPO / "jobwright" / "_templates" / "repo" / "pre-commit.sh"
+    assert template.read_text().startswith("#!/bin/sh"), "template must stay POSIX sh"
+
+    shell = shutil.which("dash") or shutil.which("ash")
+    if shell is None:
+        pytest.skip("no dash/ash available to check POSIX conformance")
+    res = subprocess.run([shell, "-n", str(template)], capture_output=True, text=True)
+    assert res.returncode == 0, f"not valid POSIX sh:\n{res.stderr}"
