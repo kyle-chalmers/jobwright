@@ -80,9 +80,6 @@ with `jobwright validate-job`, and routes to `/safe-deploy` when it's ready to s
 | **/architecture-audit** | scan for deprecated-schema references and layer violations (no DB connection) |
 | **/build-jobs-index** | regenerate the deterministic catalog (`JOBS.md` + `OBJECTS.md` + Obsidian graph layer; CI-gateable with `--check`) |
 
-Old v0.0.x names (`/onboard`, `/configure-workspace`, `/scaffold-job`, `/validate-job`) still work
-as deprecated aliases — see the [changelog](CHANGELOG.md) for the rename map and upgrade path.
-
 ## What keeps you safe
 
 - **A deploy-safety guard** that announces itself at session start and pauses before destructive

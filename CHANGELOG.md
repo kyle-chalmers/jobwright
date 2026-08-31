@@ -3,6 +3,15 @@
 All notable changes to jobwright are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions follow semver.
 
+## [0.3.0] — 2026-08-31
+
+### Removed
+- **The four deprecated v1 command aliases** (`/onboard`, `/configure-workspace`,
+  `/scaffold-job`, `/validate-job`), announced for removal in the 0.1.0 UX release. Use
+  `/setup` (onboard + configure-workspace), `/start-job` (scaffold-job), and the gate that
+  runs inside `/start-job` and `/safe-deploy` (validate-job). The `jobwright validate-job`
+  and `jobwright new-job` CLI subcommands are unchanged.
+
 ## [0.2.0] — 2026-08-20
 
 **Re-released after a history rewrite. Do not pull — re-clone.** Releases 0.0.1, 0.1.0 and
