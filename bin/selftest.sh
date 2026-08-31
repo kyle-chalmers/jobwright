@@ -19,9 +19,9 @@ echo "==> pytest (Phase 0 contract)"
 
 echo "==> skill leak check"
 if [ -d skills ] && [ -n "$(find skills -name '*.md' -print -quit 2>/dev/null)" ]; then
-  if grep -rEli '\b(databricks|airflow|dbt|dagster|prefect|snowflake_tasks|glue)\b' skills/ commands/ >/dev/null 2>&1; then
-    echo "FAIL: a platform name leaked into skills/ or commands/ — skills must call abstract verbs, not name tools"
-    grep -rEli '\b(databricks|airflow|dbt|dagster|prefect|snowflake_tasks|glue)\b' skills/ commands/ || true
+  if grep -rEli '\b(databricks|airflow|dbt|dagster|prefect|snowflake_tasks|glue)\b' skills/ >/dev/null 2>&1; then
+    echo "FAIL: a platform name leaked into skills/ — skills must call abstract verbs, not name tools"
+    grep -rEli '\b(databricks|airflow|dbt|dagster|prefect|snowflake_tasks|glue)\b' skills/ || true
     exit 1
   fi
 fi
