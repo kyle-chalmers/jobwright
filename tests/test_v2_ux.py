@@ -1,5 +1,5 @@
 """v2 UX contract: the `init` wizard, interdependent-key validation, the
-7-skill surface + deprecated alias stubs, and the guard announcement.
+7-skill surface, and the guard announcement.
 
 The consumer-shaped config test mirrors the *shape* of a real downstream repo
 (api-reset + job_def_dirs + multiple key prefixes) with generic values only —
@@ -28,7 +28,6 @@ V2_SKILLS = [
     "architecture-audit",
     "build-jobs-index",
 ]
-V1_ALIASES = ["onboard", "configure-workspace", "scaffold-job", "validate-job"]
 
 
 def _cfg(platform: dict) -> Config:
@@ -226,19 +225,13 @@ def test_cli_init_force_from_subdir_replaces_parent_config(tmp_path, monkeypatch
 
 
 # --------------------------------------------------------------------------- #
-# the v2 surface: 7 skills, 4 alias stubs, guard announced, deploy gated
+# the v2 surface: 7 skills, guard announced, deploy gated
 # --------------------------------------------------------------------------- #
 def test_v2_skill_surface():
     for s in V2_SKILLS:
         assert (REPO / "skills" / s / "SKILL.md").is_file(), f"missing skill {s}"
     extras = {p.parent.name for p in (REPO / "skills").glob("*/SKILL.md")} - set(V2_SKILLS)
     assert not extras, f"stray skill folders: {extras}"
-
-
-def test_v1_names_are_deprecated_alias_stubs():
-    for a in V1_ALIASES:
-        text = (REPO / "commands" / f"{a}.md").read_text()
-        assert "Deprecated" in text, f"{a} stub unmarked"
 
 
 def test_safe_deploy_runs_the_validation_gate_first():

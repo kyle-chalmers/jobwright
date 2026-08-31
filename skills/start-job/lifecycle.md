@@ -18,5 +18,5 @@ Surface remaining migration debt to the user as a follow-up; it does not block t
 
 ## Where the pieces went (v1 → v2)
 
-`/scaffold-job` and `/validate-job` are phases of this skill now; `jobwright new-job` and
+Scaffolding and validation are phases of this skill now; `jobwright new-job` and
 `jobwright validate-job` remain available directly for one-off use.
