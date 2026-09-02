@@ -24,6 +24,7 @@ from pathlib import Path
 import yaml
 
 from .config import Config, ConfigError, cross_validate, validate_name, validate_relpath
+from .jobsindex import is_job_folder
 
 # deploy model per platform kind. Where an adapter exists, tests assert it agrees;
 # adapter-less kinds carry the model their ecosystem conventionally uses.
@@ -38,7 +39,6 @@ DEPLOY_MODEL_BY_KIND: dict[str, str] = {
     "adf": "api-reset",
 }
 
-_JOB_FOLDER_RE = re.compile(r"^([A-Za-z][A-Za-z0-9]*)-\d+_")
 _MAX_SQL_PROBE = 40  # files to sniff for CREATE TASK before giving up
 _SQL_PROBE_BYTES = 65536  # sniff the head only — never read a whole SQL dump
 _MAX_WALK_DIRS = 4000  # directories visited before detection gives up (init must stay fast)
@@ -145,7 +145,7 @@ def _sniff_profile(kind: str, home: Path) -> str:
 
 
 def _sniff_jobs_dir(root: Path) -> tuple[str, list[str]]:
-    """Find the dir whose children look like <PREFIX>-<n>_<Name> job folders.
+    """Find the dir whose children are named like job folders (``is_job_folder``).
 
     Every candidate is scored by how many job-like children it holds and the best wins:
     a retired-jobs folder keeping one old job must not beat the twelve live ones beside
@@ -167,7 +167,10 @@ def _sniff_jobs_dir(root: Path) -> tuple[str, list[str]]:
             validate_relpath(name, "project.jobs_dir")
         except ConfigError:
             continue
-        matches = [m.group(1) for child in d.iterdir() if child.is_dir() and (m := _JOB_FOLDER_RE.match(child.name))]
+        # the catalog's own predicate (no prefixes known yet -> any key shape), so what init detects
+        # is exactly what jobs-index will list; the prefix is the matched key minus its number
+        keys = [k for child in d.iterdir() if child.is_dir() and (k := is_job_folder(child.name, []))]
+        matches = [k.rsplit("-", 1)[0] for k in keys]
         if len(matches) > best[0]:
             best = (len(matches), name, sorted(set(matches))[:5])
     return best[1], best[2]

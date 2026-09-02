@@ -15,6 +15,7 @@ from typer.testing import CliRunner
 
 from jobwright import wizard
 from jobwright.config import Config, cross_validate
+from jobwright.jobsindex import build_rows, skipped_dirs
 
 REPO = Path(__file__).resolve().parents[1]
 SESSION_HOOK = REPO / "hooks" / "session_start.sh"
@@ -188,6 +189,22 @@ def test_wizard_ranks_jobs_dir_by_job_count(tmp_path):
     (tmp_path / "JOB-9_Stray").mkdir()
     det = wizard.detect(tmp_path, home=tmp_path)
     assert det.jobs_dir == "jobs"
+
+
+def test_wizard_and_catalog_agree_on_what_a_job_folder_is(tmp_path):
+    # detection (no prefixes known yet) and indexing (prefixes configured) share one predicate:
+    # the key must START the name and the underscore after it is convention, not requirement.
+    # The wizard used to demand the underscore while the catalog matched the key anywhere, so
+    # init and jobs-index disagreed about the same folders.
+    jobs = ["JOB-1_Alpha", "JOB-2-beta", "JOB-3"]
+    not_jobs = ["archive-JOB-4_Old", "xJOB-5_Old", "retired_jobs"]
+    for name in jobs + not_jobs:
+        (tmp_path / name).mkdir()
+    det = wizard.detect(tmp_path, home=tmp_path)
+    assert (det.jobs_dir, det.key_prefixes) == (".", ["JOB"])
+    settings = {"jobs_dir": det.jobs_dir, "key_prefixes": det.key_prefixes}
+    assert [r["dir"] for r in build_rows(tmp_path, settings)] == jobs
+    assert skipped_dirs(tmp_path, settings) == sorted(not_jobs)
 
 
 def test_cli_init_yes_root_layout_summary(tmp_path, monkeypatch):

@@ -62,9 +62,21 @@ def settings_from_config(cfg) -> dict:
 
 
 def key_regex(prefixes: list[str]) -> re.Pattern:
-    if prefixes:
-        return re.compile(rf"(?:{'|'.join(re.escape(p) for p in prefixes)})-\d+")
-    return re.compile(r"[A-Z][A-Z0-9]+-\d+")
+    """What a job folder is named like: a ``<PREFIX>-<digits>`` ticket key that STARTS the name,
+    then the end of the name or a non-alphanumeric separator. ``JOB-12``, ``JOB-12_Name`` and
+    ``JOB-12-name`` qualify; ``archive-JOB-12`` and ``xJOB-12`` do not. No configured prefixes ->
+    any upper-case key shape. ``hooks/regenerate_jobs_index.py`` mirrors this regex because a hook
+    cannot import the package; keep the two in step."""
+    key = "|".join(re.escape(p) for p in prefixes) if prefixes else r"[A-Z][A-Z0-9]+"
+    return re.compile(rf"^((?:{key})-\d+)(?=[^A-Za-z0-9]|$)")
+
+
+def is_job_folder(name: str, prefixes: list[str]) -> str | None:
+    """The one predicate for "is this folder a job": the ticket key that opens ``name``
+    (``JOB-12_Name`` -> ``JOB-12``), or None. ``build_rows``, ``skipped_dirs`` and the init wizard
+    all decide through this, so detection, indexing and the skip report agree."""
+    m = key_regex(prefixes).match(name)
+    return m.group(1) if m else None
 
 
 def ticket_number(tid: str) -> int:
@@ -209,7 +221,7 @@ def load_enrichment(root: Path, jobs_dir: str) -> dict[str, dict]:
 # --------------------------------------------------------------------------- #
 def build_rows(root: Path, settings: dict) -> list[dict]:
     jobs_dir = settings.get("jobs_dir", "jobs")
-    key_re = key_regex(settings.get("key_prefixes") or [])
+    prefixes = settings.get("key_prefixes") or []
     def_dirs = [root / p for p in (settings.get("def_dirs") or [])]
     deny = settings.get("deprecated_deny") or []
     url_tmpl = settings.get("ticket_url_template")
@@ -220,10 +232,9 @@ def build_rows(root: Path, settings: dict) -> list[dict]:
     if not base.is_dir():
         return rows
     for d in sorted(p for p in base.iterdir() if p.is_dir()):
-        m = key_re.search(d.name)
-        if not m:
+        ticket = is_job_folder(d.name, prefixes)
+        if not ticket:
             continue
-        ticket = m.group(0)
         cm_path = d / "claude.md"
         cm = parse_claude_md(cm_path) if cm_path.is_file() else {}
         hdr = parse_python_header(d)
@@ -269,18 +280,20 @@ def build_rows(root: Path, settings: dict) -> list[dict]:
 
 
 def skipped_dirs(root: Path, settings: dict) -> list[str]:
-    """Folders in ``jobs_dir`` that ``build_rows`` leaves out because their name carries no
-    ticket key — real work the catalog cannot see until it is renamed. Kept separate from
+    """Folders in ``jobs_dir`` that ``build_rows`` leaves out because their name does not start
+    with a ticket key — real work the catalog cannot see until it is renamed. Kept separate from
     ``build_rows`` so the rendered files (and their golden tests) do not change; the CLI reports
-    it. The generated graph dirs, dot-dirs and ``__pycache__`` belong there and are not listed."""
+    it. Dot-dirs and ``__pycache__`` are never listed; ``graph/`` and ``objects/`` only while
+    ``graph_notes`` is on and jobwright itself generates them — with it off, a folder by either
+    name is somebody's real folder and is reported like any other."""
     base = root / settings.get("jobs_dir", "jobs")
     if not base.is_dir():
         return []
-    key_re = key_regex(settings.get("key_prefixes") or [])
-    generated = {p.name for p in graph_dirs(root, settings)}
+    prefixes = settings.get("key_prefixes") or []
+    generated = {p.name for p in graph_dirs(root, settings)} if settings.get("graph_notes", True) else set()
     return sorted(
         d.name for d in base.iterdir()
-        if d.is_dir() and not key_re.search(d.name)
+        if d.is_dir() and not is_job_folder(d.name, prefixes)
         and d.name not in generated and not d.name.startswith(".") and d.name != "__pycache__"
     )
 

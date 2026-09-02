@@ -176,13 +176,13 @@ def jobs_index(
     graph = " + graph layer" if settings.get("graph_notes", True) else ""
     typer.secho(f"Wrote JOBS.md + OBJECTS.md{graph} ({n_jobs} jobs).", fg=typer.colors.GREEN)
     # A catalog whose purpose is "know what runs" must not hide what it left out: name the
-    # folders whose names carry no ticket key (renaming them brings them in).
+    # folders whose names do not start with a ticket key (renaming them brings them in).
     skipped = skipped_dirs(root, settings)
     if skipped:
         shown = ", ".join(skipped[:8]) + (", …" if len(skipped) > 8 else "")
-        prefix = (settings.get("key_prefixes") or ["JOB"])[0]
+        shape = " or ".join(f"{p}-123_Name" for p in (settings.get("key_prefixes") or ["JOB"]))
         typer.secho(
-            f"Skipped {len(skipped)} folder(s) not named like {prefix}-123_Name: {shown}",
+            f"Skipped {len(skipped)} folder(s) not named like {shape}: {shown}",
             fg=typer.colors.YELLOW,
         )
 

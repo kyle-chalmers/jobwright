@@ -138,11 +138,11 @@ def test_missing_config_hint_works_for_plugin_users(tmp_path, monkeypatch):
 ROOT_LAYOUT_CFG = API_RESET_CFG + "  key_prefixes: [JOB]\n"
 
 
-def _job_repo(tmp_path, *names: str) -> None:
-    _write_cfg(tmp_path, ROOT_LAYOUT_CFG)
+def _job_repo(tmp_path, *names: str, cfg: str = ROOT_LAYOUT_CFG) -> None:
+    _write_cfg(tmp_path, cfg)
     for name in names:
         (tmp_path / name).mkdir()
-        if name.startswith("JOB-"):
+        if name.startswith(("JOB-", "DAG-")):
             (tmp_path / name / "claude.md").write_text(f"# Job: {name}\n")
             (tmp_path / name / "job.py").write_text("df = spark.sql('SELECT 1 FROM ANALYTICS.VW_DEMO')\n")
 
@@ -185,6 +185,55 @@ def test_jobs_index_skipped_list_is_capped(tmp_path, monkeypatch):
     assert "Skipped 10 folder(s)" in result.output
     assert ", ".join(extras[:8]) + ", …" in result.output
     assert extras[8] not in result.output
+
+
+def test_jobs_index_key_must_start_the_folder_name(tmp_path, monkeypatch):
+    # indexing used to find the key ANYWHERE in the name, so archive-JOB-4_Old was catalogued as
+    # JOB-4 while the Skipped line promised the JOB-123_Name shape. The underscore, though, is
+    # convention rather than requirement: JOB-2-beta and a bare JOB-3 are jobs.
+    _job_repo(tmp_path, "JOB-1_Alpha", "JOB-2-beta", "JOB-3", "archive-JOB-4_Old", "xJOB-5_Old")
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(app, ["jobs-index"])
+    assert result.exit_code == 0, result.output
+    assert "(3 jobs)" in result.output
+    assert "Skipped 2 folder(s) not named like JOB-123_Name: archive-JOB-4_Old, xJOB-5_Old" in result.output
+    jobs_md = (tmp_path / "JOBS.md").read_text()
+    assert "[JOB-2](JOB-2-beta/)" in jobs_md and "[JOB-3](JOB-3/)" in jobs_md
+    assert "JOB-4" not in jobs_md and "JOB-5" not in jobs_md
+
+
+def test_jobs_index_reports_a_real_objects_folder_when_graph_notes_is_off(tmp_path, monkeypatch):
+    # graph/ and objects/ are only jobwright's while it generates them; with graph_notes off a
+    # folder by either name is real work and must not vanish from the report — the very bug
+    # class the Skipped line exists to expose
+    _job_repo(tmp_path, "JOB-1_Alpha", "graph", "objects", cfg=ROOT_LAYOUT_CFG + "  graph_notes: false\n")
+    (tmp_path / "graph" / "notes.txt").write_text("mine\n")
+    (tmp_path / "objects" / "schema.sql").write_text("select 1\n")
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(app, ["jobs-index"])
+    assert result.exit_code == 0, result.output
+    assert "Skipped 2 folder(s) not named like JOB-123_Name: graph, objects" in result.output
+    assert (tmp_path / "graph" / "notes.txt").is_file() and (tmp_path / "objects" / "schema.sql").is_file()
+
+
+def test_jobs_index_empty_jobs_dir_writes_an_empty_catalog_and_no_skipped_line(tmp_path, monkeypatch):
+    _write_cfg(tmp_path, ROOT_LAYOUT_CFG.replace("jobs_dir: .", "jobs_dir: jobs"))
+    (tmp_path / "jobs").mkdir()
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(app, ["jobs-index"])
+    assert result.exit_code == 0, result.output
+    assert "(0 jobs)" in result.output and "Skipped" not in result.output
+    assert "**0 jobs**" in (tmp_path / "jobs" / "JOBS.md").read_text()
+
+
+def test_jobs_index_skipped_message_names_every_prefix(tmp_path, monkeypatch):
+    # the shape it asks for must cover every configured prefix, not just the first one
+    _job_repo(tmp_path, "JOB-1_Alpha", "DAG-2_Beta", "retired_jobs", cfg=API_RESET_CFG + "  key_prefixes: [JOB, DAG]\n")
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(app, ["jobs-index"])
+    assert result.exit_code == 0, result.output
+    assert "(2 jobs)" in result.output
+    assert "not named like JOB-123_Name or DAG-123_Name: retired_jobs" in result.output
 
 
 # --------------------------------------------------------------------------- #
