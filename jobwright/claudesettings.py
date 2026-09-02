@@ -111,15 +111,22 @@ def _preflight(path: Path) -> dict:
     return doc
 
 
-def _merge(doc: dict, repo: str, force: bool) -> tuple[dict, list[str]]:
-    """Return the merged document and any conflicts found. Never overwrites silently."""
+def _merge(doc: dict, repo: str, force: bool) -> tuple[dict, list[str], list[str]]:
+    """Return the merged document, any conflicts found, and notes for the result message.
+
+    Conflicts stop the write. Notes explain a merge decision that did not. Never overwrites
+    silently.
+    """
     merged = json.loads(json.dumps(doc))  # deep copy; the doc is plain JSON by construction
     marketplace, plugin_ref = desired_entries(repo)
     conflicts: list[str] = []
+    notes: list[str] = []
 
     markets = merged.setdefault("extraKnownMarketplaces", {})
     existing = markets.get(MARKETPLACE_NAME)
-    if existing is not None and existing != marketplace:
+    if existing is None:
+        markets[MARKETPLACE_NAME] = marketplace
+    elif not isinstance(existing, dict) or existing.get("source") != marketplace["source"]:
         if force:
             markets[MARKETPLACE_NAME] = marketplace
         else:
@@ -127,8 +134,23 @@ def _merge(doc: dict, repo: str, force: bool) -> tuple[dict, list[str]]:
                 f"extraKnownMarketplaces.{MARKETPLACE_NAME} already points somewhere else "
                 f"({json.dumps(existing)}). Leaving it. Re-run with --force to replace it."
             )
-    elif existing is None:
-        markets[MARKETPLACE_NAME] = marketplace
+    else:
+        # Same source, so the entry is ours. Only the source decides that: `claude plugin
+        # marketplace add` writes the entry without autoUpdate, and comparing whole entries
+        # called the documented install path a conflict. Fill autoUpdate in and keep whatever
+        # else the user put there.
+        if "autoUpdate" not in existing:
+            existing["autoUpdate"] = True
+            notes.append("added autoUpdate")
+        elif existing["autoUpdate"] is not True:
+            if force:
+                existing["autoUpdate"] = True
+                notes.append("turned autoUpdate on")
+            else:
+                notes.append(
+                    f"kept autoUpdate: {json.dumps(existing['autoUpdate'])}, which someone set "
+                    "on purpose; --force turns it on"
+                )
 
     plugins = merged.setdefault("enabledPlugins", {})
     current = plugins.get(plugin_ref)
@@ -140,7 +162,7 @@ def _merge(doc: dict, repo: str, force: bool) -> tuple[dict, list[str]]:
     elif current is not True:
         plugins[plugin_ref] = True
 
-    return merged, conflicts
+    return merged, conflicts, notes
 
 
 def _atomic_write(path: Path, text: str) -> None:
@@ -179,20 +201,23 @@ def configure(root: Path, repo: str = DEFAULT_REPO, force: bool = False) -> Resu
     path = root / SETTINGS_REL
     existed = path.exists()
     doc = _preflight(path)
-    merged, conflicts = _merge(doc, repo, force)
+    merged, conflicts, notes = _merge(doc, repo, force)
 
     if conflicts:
         raise SettingsError("\n".join(conflicts))
 
+    detail = f" ({'; '.join(notes)})" if notes else ""
     text = json.dumps(merged, indent=2) + "\n"
     # Semantic no-op: don't rewrite the file just to churn its formatting.
     if existed and merged == doc:
-        return Result(path, changed=False, created=False, message="already configured — unchanged")
+        return Result(
+            path, changed=False, created=False, message="already configured — unchanged" + detail
+        )
 
     _atomic_write(path, text)
     return Result(
         path,
         changed=True,
         created=not existed,
-        message="created" if not existed else "updated",
+        message=("created" if not existed else "updated") + detail,
     )

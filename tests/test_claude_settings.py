@@ -103,6 +103,65 @@ def test_a_marketplace_pointing_elsewhere_is_a_conflict(tmp_path):
     assert _settings(root)["extraKnownMarketplaces"]["jobwright"]["source"]["repo"] == "kyle-chalmers/jobwright"
 
 
+def _same_source_entry(**extra) -> dict:
+    """A marketplace entry pointing at the real repo, as `claude plugin marketplace add`
+    writes it: source only, no autoUpdate. `extra` adds keys the user may have set."""
+    return {"source": {"source": "github", "repo": "kyle-chalmers/jobwright"}, **extra}
+
+
+def test_same_source_without_autoupdate_is_merged_not_a_conflict(tmp_path):
+    """The documented CLI install path writes the entry without autoUpdate. Comparing the
+    whole entry called that a conflict, so autoUpdate was unreachable via that path."""
+    root = _repo(tmp_path)
+    (root / ".claude").mkdir()
+    (root / SETTINGS_REL).write_text(
+        json.dumps(
+            {
+                "extraKnownMarketplaces": {"jobwright": _same_source_entry(comment="added by hand")},
+                "enabledPlugins": {"jobwright@jobwright": True},
+            }
+        )
+    )
+    res = configure(root)
+    assert res.changed is True
+    assert res.message == "updated (added autoUpdate)"
+    entry = _settings(root)["extraKnownMarketplaces"]["jobwright"]
+    assert entry["autoUpdate"] is True
+    assert entry["comment"] == "added by hand"  # other keys survive the merge
+    assert entry["source"] == {"source": "github", "repo": "kyle-chalmers/jobwright"}
+
+
+def test_merged_autoupdate_is_idempotent(tmp_path):
+    root = _repo(tmp_path)
+    (root / ".claude").mkdir()
+    (root / SETTINGS_REL).write_text(
+        json.dumps({"extraKnownMarketplaces": {"jobwright": _same_source_entry()}})
+    )
+    configure(root)
+    before = (root / SETTINGS_REL).read_bytes()
+    res = configure(root)
+    assert res.changed is False
+    assert res.message == "already configured — unchanged"
+    assert (root / SETTINGS_REL).read_bytes() == before
+
+
+def test_explicit_autoupdate_false_is_kept_and_reported(tmp_path):
+    """Someone chose autoUpdate: false. Keep it and say so — it is not an error."""
+    root = _repo(tmp_path)
+    (root / ".claude").mkdir()
+    (root / SETTINGS_REL).write_text(
+        json.dumps({"extraKnownMarketplaces": {"jobwright": _same_source_entry(autoUpdate=False)}})
+    )
+    res = configure(root)
+    assert "kept autoUpdate: false" in res.message
+    doc = _settings(root)
+    assert doc["extraKnownMarketplaces"]["jobwright"]["autoUpdate"] is False
+    assert doc["enabledPlugins"]["jobwright@jobwright"] is True  # the rest still merges
+
+    configure(root, force=True)
+    assert _settings(root)["extraKnownMarketplaces"]["jobwright"]["autoUpdate"] is True
+
+
 def test_malformed_json_refuses_and_leaves_the_file_alone(tmp_path):
     root = _repo(tmp_path)
     (root / ".claude").mkdir()
