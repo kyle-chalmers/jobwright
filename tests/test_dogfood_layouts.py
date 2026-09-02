@@ -1,10 +1,12 @@
 """CLI hardening surfaced by adopting jobwright on repos with unusual layouts (job
 folders at the repo root, a retired-jobs folder, no job-definitions tree):
 ``doctor`` must catch ``job_def_dirs`` that point nowhere, the file-based checks
-must accept a directory the way ``check architecture`` already does, and the
-no-config hint must work for plugin users who never open a shell. With the jobs dir at the
-repo root every file is "under" it, so the PostToolUse catalog rebuild has to scope itself to
-job-shaped top-level folders instead of firing on every edit in the repo.
+must accept a directory the way ``check architecture`` already does (and descend into it
+the same way), and the no-config hint must work for plugin users who never open a shell. With
+the jobs dir at the repo root every file is "under" it, so the PostToolUse catalog rebuild has
+to scope itself to job-shaped top-level folders instead of firing on every edit in the repo.
+Adapters resolve configured repo-relative paths from the config root, so ``diff-job`` run from a
+job folder finds the same definition files ``doctor`` just checked.
 """
 
 from __future__ import annotations
@@ -20,7 +22,10 @@ import pytest
 from typer.testing import CliRunner
 
 from jobwright.cli import app
-from jobwright.config import ConfigError, load_config
+from jobwright.config import ConfigError, find_config, load_config
+from jobwright.platforms import get_adapter
+from jobwright.platforms.base import JobDefinition
+from jobwright.platforms.databricks import DatabricksAdapter
 
 REPO = Path(__file__).resolve().parent.parent
 REGEN_HOOK = REPO / "hooks" / "regenerate_jobs_index.py"
@@ -74,6 +79,73 @@ def test_doctor_dir_check_only_applies_when_job_def_dirs_are_read(tmp_path, monk
 
 
 # --------------------------------------------------------------------------- #
+# adapters: configured paths resolve from the config root, not the process cwd
+# --------------------------------------------------------------------------- #
+SQL_DDL_CFG = (
+    "platform:\n  kind: snowflake_tasks\n  deploy_model: sql-ddl\n"
+    "  job_def_dirs: {prod: tasks/prod}\n"
+)
+GIT_SYNC_CFG = "platform:\n  kind: airflow\n  deploy_model: git-sync\n  dags_dir: dags\n"
+
+
+def _adapter_from(cwd: Path):
+    """Build the adapter the way `diff-job` does: config found by walking up from cwd."""
+    cfg_path = find_config(cwd)
+    cfg = load_config(cfg_path)
+    return get_adapter(cfg.platform.kind, profile=cfg.platform.profile, config=cfg, root=cfg_path.parent)
+
+
+@pytest.mark.parametrize(
+    ("cfg", "rel_file", "ref", "content", "field"),
+    [
+        (API_RESET_CFG, "job_definitions/prod/JOB-1_Alpha.json", "JOB-1", '{"name": "Alpha"}\n', None),
+        (SQL_DDL_CFG, "tasks/prod/NIGHTLY_LOAD.sql", "NIGHTLY_LOAD", "CREATE TASK NIGHTLY_LOAD AS SELECT 1\n", "ddl"),
+        (GIT_SYNC_CFG, "dags/nightly_load.py", "nightly_load", "DAG = None\n", "source"),
+    ],
+)
+def test_adapter_repo_lookup_resolves_from_the_config_root_not_cwd(
+    tmp_path, monkeypatch, cfg, rel_file, ref, content, field
+):
+    # doctor checks job_def_dirs against the config's directory, but the adapters built
+    # Path(rel) from the process cwd: `cd <job folder> && jobwright diff-job JOB-1` reported no
+    # repo definition for the very file doctor had just found
+    _write_cfg(tmp_path, cfg)
+    target = tmp_path / rel_file
+    target.parent.mkdir(parents=True)
+    target.write_text(content)
+    nested = tmp_path / "JOB-1_Alpha" / "notebooks"
+    nested.mkdir(parents=True)
+    monkeypatch.chdir(nested)
+    spec = _adapter_from(nested).get_job_definition(ref).spec
+    if field is None:
+        assert spec == json.loads(content)
+    else:
+        assert spec[field] == content
+
+
+def test_diff_job_from_a_nested_cwd_reads_the_definition_doctor_checked(tmp_path, monkeypatch):
+    _write_cfg(tmp_path)
+    for env in ("dev", "prod"):
+        (tmp_path / "job_definitions" / env).mkdir(parents=True)
+    spec = {"name": "Alpha", "tasks": []}
+    (tmp_path / "job_definitions" / "prod" / "JOB-1_Alpha.json").write_text(json.dumps(spec) + "\n")
+    nested = tmp_path / "JOB-1_Alpha"
+    nested.mkdir()
+    monkeypatch.chdir(nested)
+    # the live side needs the platform CLI; stand it in with the repo spec so the only way
+    # this can fail is the repo lookup missing the file
+    monkeypatch.setattr(
+        DatabricksAdapter, "get_live_definition",
+        lambda self, ref: JobDefinition(name=ref, spec=dict(spec), source="live"),
+    )
+    runner = CliRunner()
+    assert runner.invoke(app, ["doctor"]).exit_code == 0
+    result = runner.invoke(app, ["diff-job", "JOB-1"])
+    assert result.exit_code == 0, result.output
+    assert "no drift" in result.output
+
+
+# --------------------------------------------------------------------------- #
 # check syntax / job-defs / deps: a directory argument expands to its files
 # --------------------------------------------------------------------------- #
 def test_check_job_defs_accepts_a_directory(tmp_path, monkeypatch):
@@ -116,6 +188,37 @@ def test_check_deps_directory_without_python_exits_1(tmp_path, monkeypatch):
     result = CliRunner().invoke(app, ["check", "deps", "sql"])
     assert result.exit_code == 1
     assert "no .py files in sql" in result.output
+
+
+def test_check_syntax_root_layout_descends_into_job_folders(tmp_path, monkeypatch):
+    # with jobs_dir "." the notebooks sit one level down; `check syntax .` used to stop at the
+    # top level and report "no .py files in ." while `check architecture .` recursed. Virtual
+    # envs and caches are the one place recursion must not walk into.
+    files = {
+        "JOB-1_Alpha/job.py": "%pip install requests==2.32.3\nx = 1\n",
+        "JOB-2_Beta/notebooks/bad.py": "def broken(:\n",
+        ".venv/lib/vendored.py": "def broken(:\n",
+        "__pycache__/stale.py": "def broken(:\n",
+    }
+    for rel, body in files.items():
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_text(body)
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(app, ["check", "syntax", "."])
+    assert result.exit_code == 1
+    assert "JOB-2_Beta/notebooks/bad.py" in result.output
+    assert "1 of 2 file(s) failed" in result.output  # .venv and __pycache__ were not scanned
+    assert ".venv" not in result.output and "__pycache__" not in result.output
+
+
+def test_check_job_defs_descends_into_env_subdirs(tmp_path, monkeypatch):
+    for env in ("dev", "prod"):
+        (tmp_path / "job_definitions" / env).mkdir(parents=True)
+        (tmp_path / "job_definitions" / env / "JOB-1_Alpha.json").write_text('{"name": "Alpha"}\n')
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(app, ["check", "job-defs", "job_definitions"])
+    assert result.exit_code == 0, result.output
+    assert "2 file(s) OK" in result.output
 
 
 # --------------------------------------------------------------------------- #

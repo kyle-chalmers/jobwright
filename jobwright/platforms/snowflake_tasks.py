@@ -78,7 +78,7 @@ class SnowflakeTasksAdapter(JobPlatformAdapter):
 
     def _repo_ddl_file(self, ref: str) -> Path | None:
         for rel in (self.config.platform.job_def_dirs or {}).values() if self.config else []:
-            for f in sorted(Path(rel).glob("*.sql")):
+            for f in sorted((self.root / rel).glob("*.sql")):
                 if f.stem.lower() == ref.lower() or f.stem.split("_", 1)[0].lower() == ref.lower():
                     return f
         return None

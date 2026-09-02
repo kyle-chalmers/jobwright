@@ -194,8 +194,8 @@ def diff_job(
     """Diff the LIVE job definition against the repo JSON (drift detection)."""
     from .platforms import get_adapter
 
-    cfg, _ = _load()
-    adapter = get_adapter(cfg.platform.kind, profile=cfg.platform.profile, config=cfg)
+    cfg, root = _load()
+    adapter = get_adapter(cfg.platform.kind, profile=cfg.platform.profile, config=cfg, root=root)
     # Gate on the ADAPTER's deploy_model (authoritative), not config's — a config typo
     # to git-sync must not silently disable live-vs-repo drift detection.
     if adapter.deploy_model == "git-sync":
@@ -365,10 +365,10 @@ def init(
     typer.secho(f"\nWrote {CONFIG_FILENAME}:", fg=typer.colors.GREEN)
     jobs_where = "at the repo root" if cfg.project.jobs_dir == "." else f"in {cfg.project.jobs_dir}/"
     typer.echo(f"  platform {cfg.platform.kind} · deploys: {cfg.platform.deploy_model} · jobs {jobs_where}")
-    # both values come from THIS machine's CLI setup, yet they land in a committed file
+    # detected here or typed at the prompt, these two land in a committed file either way
     typer.echo(
         f"  profile: {cfg.platform.profile or '(none)'} · warehouse: {cfg.warehouse.dialect} "
-        "— detected on this machine; confirm they match your team's convention."
+        "— confirm these committed settings match your team's convention."
     )
     typer.echo(
         "  Commented defaults inside cover the rest (ticket links, governance fields, exceptions) — edit anytime."
@@ -542,12 +542,19 @@ check_app = typer.Typer(no_args_is_help=True, help="Run a single generic check (
 app.add_typer(check_app, name="check")
 
 
+def _under_hidden_or_cache(rel: Path) -> bool:
+    """True when a dot-dir or __pycache__ sits anywhere on the way to ``rel``."""
+    return any(part.startswith(".") or part == "__pycache__" for part in rel.parts[:-1])
+
+
 def _expand_dirs(paths: list[str], ext: str) -> list[str]:
     """Let a check take a directory, as `check architecture` does.
 
-    A directory expands (non-recursive, sorted) to the files this check handles; one that
-    holds none is an error, not a silent pass. Anything else passes through untouched, so
-    the tool still reports a missing or unreadable file itself.
+    A directory expands (recursive, sorted) to the files this check handles, skipping
+    dot-dirs and __pycache__ — with the jobs dir at the repo root the notebooks sit one
+    level down, so `check syntax .` has to descend the way `check architecture .` does.
+    A directory holding none is an error, not a silent pass. Anything else passes through
+    untouched, so the tool still reports a missing or unreadable file itself.
     """
     out: list[str] = []
     for raw in paths:
@@ -555,7 +562,11 @@ def _expand_dirs(paths: list[str], ext: str) -> list[str]:
         if not p.is_dir():
             out.append(raw)
             continue
-        found = sorted(str(f) for f in p.glob(f"*{ext}") if f.is_file())
+        found = sorted(
+            str(f)
+            for f in p.rglob(f"*{ext}")
+            if f.is_file() and not _under_hidden_or_cache(f.relative_to(p))
+        )
         if not found:
             typer.secho(f"no {ext} files in {raw}", fg=typer.colors.RED, err=True)
             raise typer.Exit(1)

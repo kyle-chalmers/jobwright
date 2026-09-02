@@ -26,6 +26,7 @@ from __future__ import annotations
 import subprocess
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 # Verbs an adapter MUST implement (or raise ManualFallback with a manual recipe).
@@ -111,9 +112,13 @@ class JobPlatformAdapter(ABC):
     #: Single source of truth — the markdown playbook mirrors this.
     destructive_patterns: list[dict[str, str]] = []
 
-    def __init__(self, profile: str = "", config: Any = None) -> None:
+    def __init__(self, profile: str = "", config: Any = None, root: Path | None = None) -> None:
         self.profile = profile
         self.config = config
+        # Configured paths (job_def_dirs, dags_dir) are repo-relative. They resolve against
+        # the directory holding the config, not the process cwd, so a verb run from inside a
+        # job folder finds the same files `doctor` checked.
+        self.root = Path(root) if root is not None else Path.cwd()
 
     # ----- discovery / recall ------------------------------------------------
     @abstractmethod

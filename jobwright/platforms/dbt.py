@@ -42,7 +42,7 @@ class DbtAdapter(JobPlatformAdapter):
     def _models_dir(self) -> Path:
         # dbt projects vary; default to models/, overridable via dags_dir (the git-sync code dir).
         rel = (self.config.platform.dags_dir if self.config else "") or "models"
-        return Path(rel)
+        return self.root / rel
 
     def list_jobs(self) -> list[JobRef]:
         proc = run_cli(["dbt", "ls", "--resource-type", "model", "--output", "name"])

@@ -191,6 +191,16 @@ def test_wizard_ranks_jobs_dir_by_job_count(tmp_path):
     assert det.jobs_dir == "jobs"
 
 
+def test_wizard_ranks_a_later_top_level_dir_above_an_earlier_conventional_one(tmp_path):
+    # the case that separates ranking from first-match: jobs/ is tried first and holds one job,
+    # workflows/ comes later in candidate order and holds three. First-match picks jobs/.
+    (tmp_path / "jobs" / "JOB-1_Only").mkdir(parents=True)
+    for n in (2, 3, 4):
+        (tmp_path / "workflows" / f"JOB-{n}_Job_{n}").mkdir(parents=True)
+    det = wizard.detect(tmp_path, home=tmp_path)
+    assert (det.jobs_dir, det.key_prefixes) == ("workflows", ["JOB"])
+
+
 def test_wizard_and_catalog_agree_on_what_a_job_folder_is(tmp_path):
     # detection (no prefixes known yet) and indexing (prefixes configured) share one predicate:
     # the key must START the name and the underscore after it is convention, not requirement.
@@ -219,8 +229,9 @@ def test_cli_init_yes_root_layout_summary(tmp_path, monkeypatch):
     cfg = load_config(tmp_path / "jobwright.config.yaml")
     assert cfg.project.jobs_dir == "." and cross_validate(cfg) == []
     assert "jobs at the repo root" in result.output  # not the awkward "jobs in ./"
-    # profile + dialect come from this laptop but land in a committed file — say so
-    assert "detected on this machine" in result.output
+    # profile + dialect land in a committed file whether detected or typed at the prompt —
+    # say so without claiming to know which
+    assert "confirm these committed settings match your team's convention" in result.output
 
 
 def test_cli_init_interactive_reprompts_and_writes_valid_config(tmp_path, monkeypatch):
