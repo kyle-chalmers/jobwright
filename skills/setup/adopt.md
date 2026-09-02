@@ -7,21 +7,25 @@ that exists.**
    ticket prefixes actually in use, and where job-definition files live. `jobwright init` does this
    detection automatically and pre-fills its questions from it — the interview should feel like
    confirming facts, not answering a survey.
-2. **Config.** If `jobwright.config.yaml` already exists, do **not** re-run `init` — read it, run
-   `jobwright doctor`, and fix what doctor names. Only a deliberate `jobwright init --force`
-   replaces an existing config.
-3. **Project-scoped settings.** `init` does not run in adopt mode, so the settings step never
-   fires on its own here — run `jobwright configure-claude` explicitly. It is idempotent, merges
-   into whatever is already in `.claude/settings.json`, and reports a conflict rather than
-   overwriting one. Then tell the user to commit the file.
+2. **Config — two cases.**
+   - *No `jobwright.config.yaml` yet* (the common adopt: a repo full of jobs, never configured): run
+     `jobwright init` — detection pre-fills the interview from what is already there, and `init`
+     also writes `.claude/settings.json`. Nothing else is needed for step 3.
+   - *A config already exists*: do **not** re-run `init` — read it, run `jobwright doctor`, and fix
+     what doctor names. Only a deliberate `jobwright init --force` replaces an existing config.
+3. **Project-scoped settings (existing-config case only).** When `init` did not run, the settings
+   step never fired — run `jobwright configure-claude` explicitly. It is idempotent, merges into
+   whatever is already in `.claude/settings.json`, and reports a conflict rather than overwriting
+   one. Then tell the user to commit the file.
 4. **Existing docs win.** If the repo has an `AGENTS.md`, `CLAUDE.md`, or per-job docs, leave them.
    `jobwright gen-agents` writes to `AGENTS.jobwright.md` for a manual merge.
 5. **Vendored hooks.** Some repos vendor `deploy_safety.py` under `.claude/hooks/` with their own
    `settings.json` wiring instead of installing the plugin. That keeps working — the hook resolves
    its patterns from the installed `jobwright` package and carries embedded fallbacks. Leave the
    vendored copy alone unless the user asks to switch to the plugin.
-6. **Catalog the estate.** Run `jobwright jobs-index`, then `jobwright check docs <jobs_dir>/*` to
-   see how much documentation debt exists. Report counts — don't start fixing every job unasked;
+6. **Catalog the estate.** Run `jobwright jobs-index`, then `jobwright check docs` (no arguments:
+   it lints every job folder the config knows, so a root-level `jobs_dir` never sweeps in README or
+   `docs/`) to see how much documentation debt exists. Report counts — don't start fixing every job unasked;
    `/document-job` handles them one at a time.
 7. **Report** what was mapped: config source, jobs found, documentation coverage, and any doctor
    findings, with the one next action per finding.

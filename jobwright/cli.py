@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -48,10 +49,45 @@ def _load():
     return cfg, cfg_path.parent
 
 
+def _version_key(v: str) -> tuple:
+    """Order versions: numeric segments (zero-padded to compare 0.4 == 0.4.0), then final > pre-release.
+    '0.4.2rc1' sorts below '0.4.2' and above '0.4.1'; anything unparsable sorts lowest."""
+    m = re.match(r"^(\d+(?:\.\d+)*)(.*)$", v.strip())
+    if not m:
+        return ((), 0, "")
+    nums = tuple(int(x) for x in m.group(1).split("."))
+    nums = nums + (0,) * (4 - len(nums))
+    suffix = m.group(2).lstrip("-.")
+    return (nums, 0 if suffix else 1, suffix)
+
+
+def _newest_cached_version() -> str:
+    """The newest jobwright the Claude Code plugin cache holds, or '' when there is none.
+
+    A `pip install jobwright` on PATH can shadow the plugin's CLI and silently run releases behind
+    what Claude Code runs; comparing against the cache turns that into a one-line warning."""
+    cache = Path(os.environ.get("JOBWRIGHT_PLUGIN_CACHE", Path.home() / ".claude" / "plugins" / "cache" / "jobwright" / "jobwright"))
+    if not cache.is_dir():
+        return ""
+    versions = [d.name for d in cache.iterdir() if d.is_dir() and re.match(r"^\d", d.name)]
+    return max(versions, key=_version_key) if versions else ""
+
+
+def _version_skew_warning() -> str:
+    newest = _newest_cached_version()
+    if newest and _version_key(newest) > _version_key(__version__):
+        return (f"this CLI is {__version__} but the Claude Code plugin cache holds {newest} — a pip install on PATH is "
+                "shadowing the plugin's CLI. Use the plugin's launcher, or pip uninstall jobwright.")
+    return ""
+
+
 @app.command()
 def version() -> None:
     """Print the jobwright version."""
     typer.echo(__version__)
+    warn = _version_skew_warning()
+    if warn:
+        typer.secho(f"warning: {warn}", fg=typer.colors.YELLOW, err=True)
 
 
 def _cli_provenance() -> str:
@@ -91,8 +127,14 @@ def doctor() -> None:
     # Where this CLI came from. Under a plugin install it is provisioned on demand, so a
     # slow first call is explainable rather than mysterious.
     typer.echo(f"  cli               = {_cli_provenance()}")
+    skew = _version_skew_warning()
+    if skew:
+        typer.secho(f"✗ {skew}", fg=typer.colors.RED)
+        ok_skew = False
+    else:
+        ok_skew = True
 
-    ok = True
+    ok = ok_skew
     # Interdependent keys (job_def_dirs vs dags_dir depends on deploy_model). Loading
     # stays lenient so old configs keep working; doctor is where mistakes get named.
     from .config import cross_validate
@@ -176,6 +218,7 @@ def jobs_index(
     n_jobs = sum(1 for line in fresh[jobs_md].splitlines() if line.startswith("| ["))
     graph = " + graph layer" if settings.get("graph_notes", True) else ""
     typer.secho(f"Wrote JOBS.md + OBJECTS.md{graph} ({n_jobs} jobs).", fg=typer.colors.GREEN)
+    typer.echo("  These are meant to be committed alongside the job docs — `jobwright install-precommit` keeps them in step.")
     # A catalog whose purpose is "know what runs" must not hide what it left out: name the
     # folders whose names do not start with a ticket key (renaming them brings them in).
     skipped = skipped_dirs(root, settings)
@@ -363,6 +406,14 @@ def init(
             raise typer.Exit(2) from None
 
     (root / CONFIG_FILENAME).write_text(text)
+    # Never hand doctor a config that fails its own check: if the wizard fell back to the default
+    # definition dirs (nothing was detected), create them so drift detection has a place to scan.
+    if cfg.platform.deploy_model != "git-sync" and not det.job_def_dirs:
+        for rel in cfg.platform.job_def_dirs.values():
+            (root / rel).mkdir(parents=True, exist_ok=True)
+            keep = root / rel / ".gitkeep"
+            if not any((root / rel).iterdir()):
+                keep.write_text("")
     typer.secho(f"\nWrote {CONFIG_FILENAME}:", fg=typer.colors.GREEN)
     jobs_where = "at the repo root" if cfg.project.jobs_dir == "." else f"in {cfg.project.jobs_dir}/"
     typer.echo(f"  platform {cfg.platform.kind} · deploys: {cfg.platform.deploy_model} · jobs {jobs_where}")
@@ -595,6 +646,17 @@ def gen_readme_cmd(
         typer.echo("  A README.md already exists, so this is a sibling: merge the parts you want into README.md, then delete it.")
 
 
+def _configured_job_dirs() -> list[str]:
+    """Every job folder the config knows: the jobs_dir entries that pass the job-folder rule."""
+    from .jobsindex import is_job_folder
+
+    cfg, root = _load()
+    base = root / cfg.project.jobs_dir
+    if not base.is_dir():
+        return []
+    return [str(d) for d in sorted(base.iterdir()) if d.is_dir() and is_job_folder(d.name, list(cfg.project.key_prefixes))]
+
+
 check_app = typer.Typer(no_args_is_help=True, help="Run a single generic check (file-based; no platform calls).")
 app.add_typer(check_app, name="check")
 
@@ -644,12 +706,17 @@ def check_architecture(
 
 @check_app.command("docs")
 def check_docs(
-    job_dirs: list[str] = typer.Argument(..., help="job folders to lint"),
+    job_dirs: list[str] = typer.Argument(None, help="job folders to lint (default: every job folder the config knows)"),
     fmt: str = typer.Option("md", "--format", help="md|json"),
 ) -> None:
     """Lint claude.md + notebook-header completeness against governance config."""
     from .tools import job_doc_lint
 
+    if not job_dirs:
+        job_dirs = _configured_job_dirs()
+        if not job_dirs:
+            typer.secho("no job folders found under the configured jobs_dir.", fg=typer.colors.YELLOW)
+            raise typer.Exit(1)
     raise typer.Exit(job_doc_lint.main(["--format", _check_fmt(fmt), *job_dirs]))
 
 
@@ -662,10 +729,19 @@ def check_syntax(files: list[str] = typer.Argument(..., help="notebook .py files
 
 
 @check_app.command("job-defs")
-def check_job_defs(files: list[str] = typer.Argument(..., help="job-definition JSON files, or directories of them")) -> None:
+def check_job_defs(files: list[str] = typer.Argument(None, help="job-definition JSON files, or directories of them (default: the configured job_def_dirs)")) -> None:
     """Validate job-definition JSON (parse + name presence in deployable dirs)."""
     from .tools import validate_job_definitions
 
+    if not files:
+        cfg, root = _load()
+        if cfg.platform.deploy_model == "git-sync":
+            typer.echo("not applicable: a git-synced platform deploys code, not job-definition files.")
+            raise typer.Exit(0)
+        files = [str(root / d) for d in cfg.platform.job_def_dirs.values() if (root / d).is_dir()]
+        if not files:
+            typer.secho("no job-definition directories exist yet (platform.job_def_dirs) — nothing to check.", fg=typer.colors.YELLOW)
+            raise typer.Exit(1)
     raise typer.Exit(validate_job_definitions.main(_expand_dirs(files, ".json")))
 
 

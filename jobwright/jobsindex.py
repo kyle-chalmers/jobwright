@@ -69,6 +69,7 @@ def settings_from_config(cfg) -> dict:
         "jobs_dir": cfg.project.jobs_dir,
         "key_prefixes": list(cfg.project.key_prefixes),
         "def_dirs": prod_dirs or all_dirs,
+        "all_def_dirs": all_dirs,
         "deprecated_deny": list(cfg.architecture.deprecated_schema_deny),
         "ticket_url_template": cfg.project.ticket_url_template or None,
         "graph_notes": bool(getattr(cfg.project, "graph_notes", True)),
@@ -309,6 +310,17 @@ def skipped_dirs(root: Path, settings: dict) -> list[str]:
         return []
     prefixes = settings.get("key_prefixes") or []
     generated = {p.name for p in graph_dirs(root, settings)} if settings.get("graph_notes", True) else set()
+    # jobwright's own directories — every configured definition dir that sits inside jobs_dir — are
+    # never "unrecognized work": take each one's first path component RELATIVE TO jobs_dir
+    own = set()
+    for d in settings.get("all_def_dirs") or settings.get("def_dirs") or []:
+        try:
+            rel = (root / d).resolve().relative_to(base.resolve())
+        except ValueError:
+            continue
+        if rel.parts:
+            own.add(rel.parts[0])
+    generated |= own
     return sorted(
         d.name for d in base.iterdir()
         if d.is_dir() and not is_job_folder(d.name, prefixes)

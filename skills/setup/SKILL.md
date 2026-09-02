@@ -48,6 +48,7 @@ the wizard pre-fills every answer from what it finds, so a typical setup is 5 co
 
 ## Done when
 
-`jobwright doctor` is green (or degraded only on live-CLI reachability), `JOBS.md` exists,
-`.claude/settings.json` is written **and staged for commit**, and the session-start banner
-confirms the deploy-safety guard is active. Next step: `/start-job <ticket>`.
+`jobwright doctor` is green (or degraded only on live-CLI reachability), `JOBS.md` exists, and
+`.claude/settings.json` is written **and staged for commit**. The deploy-safety guard and the
+session-start banner activate from the *next* session (hooks gate on the config file existing at
+session start) — say so, rather than claiming a banner nobody has seen yet. Next step: `/start-job <ticket>`.

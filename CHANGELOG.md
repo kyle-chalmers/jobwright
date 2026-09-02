@@ -3,6 +3,31 @@
 All notable changes to jobwright are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions follow semver.
 
+## [0.4.1] — 2026-09-02
+
+Polish from adopting a repo end to end — the papercuts a first-time adopter hits in the first hour.
+
+### Fixed
+- **`init` no longer hands `doctor` a config that fails.** When nothing was detected it wrote fallback
+  `job_def_dirs` that did not exist, and the very next documented step went red. The fallback dirs
+  are now created (with a `.gitkeep`) so drift detection has a place to scan from the start.
+- **`check docs` and `check job-defs` default to the config.** With no arguments they lint every job
+  folder the config knows, or scan the configured definition dirs — so a root-level `jobs_dir` never
+  needs a glob that sweeps in README and `docs/`.
+- **The skipped-folders line never lists jobwright's own definition dirs.**
+
+### Added
+- **`version` and `doctor` warn when the plugin cache holds a newer jobwright than the one running.**
+  A `pip install jobwright` on PATH can shadow the plugin's CLI and silently run releases behind what
+  Claude Code runs; the mismatch is now a one-line warning naming the fix.
+- `jobs-index` says the catalog files are meant to be committed with the job docs.
+
+### Docs
+- `/setup adopt` splits the has-config and no-config cases (the common adopt runs `init`, which also
+  writes `.claude/settings.json`); the "done when" no longer claims a session-start banner the install
+  session cannot have shown; the config comments say `deploy_model` describes how the job *definition*
+  reaches the platform, not how code reaches the cluster.
+
 ## [0.4.0] — 2026-09-02
 
 ### Changed
