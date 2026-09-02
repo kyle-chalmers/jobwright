@@ -57,8 +57,9 @@ that adoption showed were missing.
   keyword-anchored (`FROM`/`JOIN`/`INTO`/…), so a fully-qualified name carried in a plain string
   — the Spark-connector `.option("dbtable", "DB.SCHEMA.TABLE")` shape — never matched, and
   PySpark jobs landed in `OBJECTS.md` with zero objects. In `.py` files a string literal whose
-  whole content is `IDENT.IDENT.IDENT` with at least one uppercase letter now counts, so module
-  paths and dotted version strings stay out. Names assembled at runtime (variables, f-strings)
+  whole content is `IDENT.IDENT.IDENT`, every segment ALL_CAPS or all_lower with at least one
+  ALL_CAPS segment, now counts — so module paths (`os.path.join`, `package.submodule.Widget`) and
+  dotted version strings stay out. Names assembled at runtime (variables, f-strings)
   remain out of reach.
 
 ### Changed

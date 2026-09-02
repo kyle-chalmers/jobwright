@@ -106,13 +106,14 @@ def test_extract_objects_reads_quoted_three_part_names_in_python(tmp_path):
     """A fully-qualified name passed around as a Python string literal — the Spark-connector
     `.option("dbtable", "DB.SCHEMA.TABLE")` shape — has no SQL keyword in front of it, so
     keyword-anchored extraction alone left such jobs with zero objects. Quoted
-    `IDENT.IDENT.IDENT` literals with an uppercase letter now count; module paths, dotted
-    version strings, f-strings with braces, and quoted names in `.sql` files still do not."""
+    `IDENT.IDENT.IDENT` literals whose segments are each ALL_CAPS or all_lower (at least one
+    ALL_CAPS) now count; module paths, CamelCase paths, dotted version strings, f-strings with
+    braces, and quoted names in `.sql` files still do not."""
     job = tmp_path / "JOB-2_Spark"
     job.mkdir()
     (job / "job.py").write_text(
         'reader = spark.read.format("jdbc").option("dbtable", "ANALYTICS.CORE.ORDERS")\n'
-        "target = 'analytics.Core.Customers'\n"                    # single quotes, mixed case
+        "target = 'analytics.core.CUSTOMERS'\n"                    # single quotes, lower/upper segments
         'path = "os.path.join"\n'                                    # module path, no uppercase
         'MIN_VERSION = "1.2.3"\n'                                    # digits are not identifiers
         'table = f"{db}.{schema}.ORDERS"\n'                          # assembled at runtime
@@ -121,5 +122,23 @@ def test_extract_objects_reads_quoted_three_part_names_in_python(tmp_path):
     )
     (job / "query.sql").write_text("select 'ANALYTICS.CORE.NOT_FROM_SQL' as note\n")
     got = extract_objects(job)
-    assert got == ["analytics.Core.Customers", "ANALYTICS.CORE.ORDERS", "staging.raw_events"]
+    assert got == ["analytics.core.CUSTOMERS", "ANALYTICS.CORE.ORDERS", "staging.raw_events"]
     assert got == extract_objects(job)
+
+
+def test_quoted_object_extraction_rejects_mixed_case_segments(tmp_path):
+    """CamelCase module paths and dotted version-like strings are not objects; all-caps warehouse
+    names and segment-consistent lower/upper mixes are."""
+    from jobwright.jobsindex import extract_objects
+    job = tmp_path / "JOB-7_Mixed"
+    job.mkdir()
+    (job / "nb.py").write_text(
+        'w = "package.submodule.Widget"\n'
+        'v = "Release.v2.latest"\n'
+        'p = "os.path.join"\n'
+        't = spark.read.format("jdbc").option("dbtable", "ANALYTICS.CORE.ORDERS")\n'
+        'u = "raw.STAGING.EVENTS"\n'
+    )
+    got = extract_objects(job)
+    assert "ANALYTICS.CORE.ORDERS" in got and "raw.STAGING.EVENTS" in got
+    assert not any(x in got for x in ("package.submodule.Widget", "Release.v2.latest", "os.path.join"))

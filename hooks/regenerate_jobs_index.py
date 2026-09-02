@@ -57,8 +57,8 @@ def _job_folder_re(text: str) -> re.Pattern:
 
     Anchored <PREFIX>-<digits>, then end-of-name or a separator (JOB-12, JOB-12_Name, JOB-12-name;
     not archive-JOB-12 or xJOB-12). Prefixes come from the inline ``key_prefixes: [A, B]``
-    list via the same one-line parse as jobs_dir; a block list or a missing key falls back
-    to the generic PREFIX shape the catalog itself uses.
+    list via the same one-line parse as jobs_dir — the form the wizard writes, so keep prefixes
+    inline; a block list or a missing key falls back to the upper-case key shape the catalog uses.
     """
     m = re.search(r"^\s*key_prefixes:\s*\[([^\]]*)\]", text, re.MULTILINE)
     prefixes = [p.strip().strip("\"'") for p in m.group(1).split(",") if p.strip()] if m else []

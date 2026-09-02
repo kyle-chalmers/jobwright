@@ -37,13 +37,18 @@ SQL_OBJECT = re.compile(
 )
 # A fully-qualified name carried in a Python string literal — the Spark-connector
 # `.option("dbtable", "DB.SCHEMA.TABLE")` shape, or a quoted name passed around — has no
-# SQL keyword for SQL_OBJECT to anchor on. Whole-literal `IDENT.IDENT.IDENT` with at least
-# one uppercase letter (the lookahead), so module paths like "os.path.join" and dotted
-# version strings stay out. Names assembled at runtime (variables, f-strings with braces)
-# are out of reach by design.
-PY_QUOTED_OBJECT = re.compile(
-    r"""(['"])(?=[^'"]*[A-Z])([A-Za-z_]\w*(?:\.[A-Za-z_]\w*){2})\1"""
-)
+# SQL keyword for SQL_OBJECT to anchor on. Whole-literal `IDENT.IDENT.IDENT` where every
+# segment is ALL_CAPS or all_lower and at least one is ALL_CAPS (_looks_like_object), so
+# module paths ("os.path.join", "package.submodule.Widget") and dotted version strings
+# stay out. Names assembled at runtime (variables, f-strings with braces) are out of reach
+# by design.
+PY_QUOTED_OBJECT = re.compile(r"""(['"])([A-Za-z_]\w*(?:\.[A-Za-z_]\w*){2})\1""")
+
+
+def _looks_like_object(name: str) -> bool:
+    """Every dotted segment is ALL_CAPS or all_lower, and at least one is ALL_CAPS."""
+    segs = name.split(".")
+    return all(s.isupper() or s.islower() for s in segs) and any(s.isupper() for s in segs)
 PY_IMPORT = re.compile(r"^\s*(?:from\s+\S+\s+import\b|import\s)")
 # Trailing line comment (Python `#`, SQL `--`). Stripped before extraction so
 # commented-out code never registers as a live object reference — e.g. a disabled
@@ -209,7 +214,8 @@ def extract_objects(job_dir: Path, cap: int = 40) -> list[str]:
                     found.setdefault(name.lower(), name)
                 if f.suffix == ".py":
                     for _quote, name in PY_QUOTED_OBJECT.findall(line):
-                        found.setdefault(name.lower(), name)
+                        if _looks_like_object(name):
+                            found.setdefault(name.lower(), name)
     return sorted(found.values(), key=str.lower)[:cap]
 
 

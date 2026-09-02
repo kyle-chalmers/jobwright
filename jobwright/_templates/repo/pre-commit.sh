@@ -33,7 +33,7 @@ done
 
 # jobs_dir from config (same one-line parse the PostToolUse hook uses); default "jobs".
 JOBS_DIR=$(sed -n 's/^[[:space:]]*jobs_dir:[[:space:]]*//p' "$ROOT/jobwright.config.yaml" 2>/dev/null \
-  | head -1 | tr -d "\"'" | tr -d '[:space:]')
+  | head -1 | sed 's/[[:space:]]*#.*$//' | tr -d "\"'" | tr -d '[:space:]')
 [ -n "$JOBS_DIR" ] || JOBS_DIR="jobs"
 JOBS_DIR=${JOBS_DIR%/}
 
@@ -46,8 +46,8 @@ if [ "$JOBS_DIR" = "." ]; then
   # TOP-LEVEL folders instead — first path segment <PREFIX>-<digits>, then end-of-name or a
   # separator (JOB-12, JOB-12_Name, JOB-12-name; not archive-JOB-12 or xJOB-12). Prefixes
   # come from the inline `key_prefixes: [A, B]` list via the same one-line parse as
-  # jobs_dir; a block list or a missing key falls back to the generic PREFIX shape the
-  # catalog itself uses.
+  # jobs_dir — the form the wizard writes, so keep prefixes inline; a block list or a missing
+  # key falls back to the upper-case key shape the catalog uses.
   PREFIXES=$(sed -n 's/^[[:space:]]*key_prefixes:[[:space:]]*\[\([^]]*\)\].*/\1/p' "$ROOT/jobwright.config.yaml" 2>/dev/null \
     | head -1 | tr -d "\"' \t")
   case "$PREFIXES" in
