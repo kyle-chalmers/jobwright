@@ -458,3 +458,94 @@ def test_init_writes_the_profile_to_the_local_file_and_gitignores_it(tmp_path, m
     assert "gitignored" in r.output
     d = CliRunner().invoke(app, ["doctor"])
     assert "platform.profile  = mine (jobwright.config.local.yaml)" in d.output
+
+
+def test_init_creates_the_fallback_definition_dirs_so_doctor_is_green(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from jobwright import wizard
+    from jobwright.cli import app
+    (tmp_path / "JOB-1_A").mkdir()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(wizard, "_sniff_profile", lambda kind, home: "")
+    r = CliRunner().invoke(app, ["init", "--yes", "--no-claude-settings"])
+    assert r.exit_code == 0, r.output
+    assert (tmp_path / "job_definitions" / "prod").is_dir() and (tmp_path / "job_definitions" / "dev").is_dir()
+    assert (tmp_path / "job_definitions" / "prod" / ".gitkeep").is_file()
+    d = CliRunner().invoke(app, ["doctor"])
+    assert d.exit_code == 0, d.output
+    assert "does not exist" not in d.output
+
+
+def test_check_docs_and_job_defs_default_to_the_config(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from jobwright.cli import app
+    for n in ("JOB-1_A", "JOB-2_B", "not_a_job", "docs"):
+        (tmp_path / n).mkdir()
+    (tmp_path / "JOB-1_A" / "job.py").write_text("# Databricks notebook source\nx = 1\n")
+    (tmp_path / "jobwright.config.yaml").write_text(API_RESET_CFG)
+    monkeypatch.chdir(tmp_path)
+    r = CliRunner().invoke(app, ["check", "docs"])
+    linted = [line.split("job_doc_lint: ", 1)[1].rstrip("/").rsplit("/", 1)[-1] for line in r.output.splitlines() if line.startswith("job_doc_lint: ")]
+    assert sorted(linted) == ["JOB-1_A", "JOB-2_B"], r.output
+    r = CliRunner().invoke(app, ["check", "job-defs"])
+    assert r.exit_code == 1 and "nothing to check" in r.output  # no definition dirs exist in this fixture
+
+
+def test_skip_report_never_lists_the_configured_definition_dirs(tmp_path):
+    from jobwright.jobsindex import skipped_dirs
+    for n in ("JOB-1_A", "job_definitions", "retired"):
+        (tmp_path / n).mkdir()
+    (tmp_path / "job_definitions" / "prod").mkdir()
+    got = skipped_dirs(tmp_path, {"jobs_dir": ".", "key_prefixes": ["JOB"], "def_dirs": ["job_definitions/prod"], "graph_notes": True})
+    assert got == ["retired"]
+
+
+def test_version_warns_when_the_plugin_cache_is_newer(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from jobwright import __version__
+    from jobwright.cli import app
+    cache = tmp_path / "cache"
+    (cache / "99.0.0").mkdir(parents=True)
+    monkeypatch.setenv("JOBWRIGHT_PLUGIN_CACHE", str(cache))
+    r = CliRunner().invoke(app, ["version"])
+    assert r.output.splitlines()[0] == __version__
+    assert "shadowing the plugin" in r.output
+    (cache / "99.0.0").rename(cache / "0.0.1")
+    r = CliRunner().invoke(app, ["version"])
+    assert "shadowing" not in r.output
+
+
+def test_check_job_defs_defaults_scan_the_configured_dirs_and_git_sync_is_not_applicable(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from jobwright.cli import app
+    (tmp_path / "JOB-1_A").mkdir()
+    (tmp_path / "job_definitions" / "prod").mkdir(parents=True)
+    (tmp_path / "job_definitions" / "prod" / "JOB-1_A.json").write_text('{"name": "JOB-1_A", "tasks": []}')
+    (tmp_path / "jobwright.config.yaml").write_text(API_RESET_CFG.replace("job_definitions/dev", "job_definitions/prod"))
+    monkeypatch.chdir(tmp_path)
+    r = CliRunner().invoke(app, ["check", "job-defs"])
+    assert "JOB-1_A.json" in r.output or "1 file" in r.output or r.exit_code == 0, r.output
+    (tmp_path / "jobwright.config.yaml").write_text(
+        "schema_version: 1\nproject:\n  name: X\n  key_prefixes: [JOB]\n  jobs_dir: .\nplatform:\n  kind: airflow\n  deploy_model: git-sync\n  dags_dir: dags\nwarehouse:\n  dialect: none\narchitecture:\n  layers: []\n  layer_rules: {}\n  deprecated_schema_deny: []\n")
+    r = CliRunner().invoke(app, ["check", "job-defs"])
+    assert r.exit_code == 0 and "not applicable" in r.output
+
+
+def test_skip_report_ignores_definition_dirs_under_a_subdirectory_jobs_dir(tmp_path):
+    from jobwright.jobsindex import skipped_dirs
+    (tmp_path / "jobs" / "JOB-1_A").mkdir(parents=True)
+    (tmp_path / "jobs" / "defs" / "prod").mkdir(parents=True)
+    (tmp_path / "jobs" / "retired").mkdir()
+    got = skipped_dirs(tmp_path, {"jobs_dir": "jobs", "key_prefixes": ["JOB"], "all_def_dirs": ["jobs/defs/dev", "jobs/defs/prod"], "graph_notes": True})
+    assert got == ["retired"]
+
+
+def test_version_ordering_handles_prereleases():
+    from jobwright.cli import _version_key
+    assert _version_key("0.4.2rc1") < _version_key("0.4.2") and _version_key("0.4.2rc1") > _version_key("0.4.1")
+    assert _version_key("0.4") == _version_key("0.4.0")
+    assert _version_key("0.5.0-beta.1") > _version_key("0.4.9")

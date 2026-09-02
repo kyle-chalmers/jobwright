@@ -18,7 +18,9 @@ platform:
   kind: databricks                 # databricks | airflow | dbt | dagster | prefect | snowflake_tasks | glue | adf
   # profile: prod                  # optional TEAM default. Each person's own profile name goes in
                                    # jobwright.config.local.yaml (gitignored) — `jobwright init` writes it.
-  deploy_model: api-reset          # api-reset | git-sync | sql-ddl
+  deploy_model: api-reset          # api-reset | git-sync | sql-ddl — how the JOB DEFINITION is written to the
+                                   # platform (a definition pushed via API can drift from the repo), not how
+                                   # job code reaches the cluster
   job_def_dirs:                    # api-reset / sql-ddl platforms keep definitions in the repo
     dev: databricks/job_definitions/dev
     prod: databricks/job_definitions/prod

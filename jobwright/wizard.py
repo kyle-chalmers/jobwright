@@ -272,7 +272,7 @@ def compose_config(
     # committed file: `init` writes it to jobwright.config.local.yaml. A team-wide default may
     # be set here by hand and a local file still overrides it.
     lines.append("  # profile: prod                # optional TEAM default; each person sets theirs in jobwright.config.local.yaml")
-    lines.append(f"  deploy_model: {deploy_model}      # how deploys work; `jobwright doctor` validates this")
+    lines.append(f"  deploy_model: {deploy_model}      # how the JOB DEFINITION reaches the platform (not the code); `jobwright doctor` validates this")
     if deploy_model == "git-sync":
         # the adapter reads dags_dir as its code-dir override, so the fallback must match
         # each platform's convention (dbt: models/, not dags/)
