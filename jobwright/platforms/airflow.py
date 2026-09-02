@@ -42,7 +42,7 @@ class AirflowAdapter(JobPlatformAdapter):
 
     def _dags_dir(self) -> Path:
         rel = (self.config.platform.dags_dir if self.config else "") or "dags"
-        return Path(rel)
+        return self.root / rel
 
     def _cli_json(self, *args: str):
         proc = run_cli(["airflow", *args, "-o", "json"])

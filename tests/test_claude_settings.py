@@ -103,6 +103,110 @@ def test_a_marketplace_pointing_elsewhere_is_a_conflict(tmp_path):
     assert _settings(root)["extraKnownMarketplaces"]["jobwright"]["source"]["repo"] == "kyle-chalmers/jobwright"
 
 
+@pytest.mark.parametrize(
+    ("entry", "shape"),
+    [
+        pytest.param(None, "null", id="null"),
+        pytest.param("someone/fork", "string", id="string"),
+        pytest.param(["someone/fork"], "array", id="array"),
+        pytest.param({"autoUpdate": True}, 'no "source"', id="object-without-source"),
+        pytest.param({"source": "someone/fork"}, '"source" is a string', id="source-not-an-object"),
+    ],
+)
+def test_a_malformed_marketplace_entry_is_a_conflict_until_forced(tmp_path, entry, shape):
+    """A key that is present but unusable is not the same as an absent key. `dict.get` read
+    `"jobwright": null` as absent and overwrote it silently; the other shapes were reported
+    as "pointing somewhere else" when they point nowhere at all."""
+    root = _repo(tmp_path)
+    (root / ".claude").mkdir()
+    (root / SETTINGS_REL).write_text(json.dumps({"extraKnownMarketplaces": {"jobwright": entry}}))
+    before = (root / SETTINGS_REL).read_bytes()
+
+    with pytest.raises(SettingsError, match="present but malformed") as excinfo:
+        configure(root)
+    assert shape in str(excinfo.value)
+    assert "--force" in str(excinfo.value)
+    assert (root / SETTINGS_REL).read_bytes() == before  # nothing written on a conflict
+
+    res = configure(root, force=True)
+    assert res.changed is True
+    doc = _settings(root)
+    assert doc["extraKnownMarketplaces"]["jobwright"] == {
+        "source": {"source": "github", "repo": "kyle-chalmers/jobwright"},
+        "autoUpdate": True,
+    }
+    assert doc["enabledPlugins"]["jobwright@jobwright"] is True
+
+
+def test_an_absent_marketplace_key_is_still_written_without_force(tmp_path):
+    """The membership check must not turn the ordinary first-run case into a conflict."""
+    root = _repo(tmp_path)
+    (root / ".claude").mkdir()
+    (root / SETTINGS_REL).write_text(json.dumps({"extraKnownMarketplaces": {}}))
+    res = configure(root)
+    assert res.changed is True
+    assert _settings(root)["extraKnownMarketplaces"]["jobwright"]["autoUpdate"] is True
+
+
+def _same_source_entry(**extra) -> dict:
+    """A marketplace entry pointing at the real repo, as `claude plugin marketplace add`
+    writes it: source only, no autoUpdate. `extra` adds keys the user may have set."""
+    return {"source": {"source": "github", "repo": "kyle-chalmers/jobwright"}, **extra}
+
+
+def test_same_source_without_autoupdate_is_merged_not_a_conflict(tmp_path):
+    """The documented CLI install path writes the entry without autoUpdate. Comparing the
+    whole entry called that a conflict, so autoUpdate was unreachable via that path."""
+    root = _repo(tmp_path)
+    (root / ".claude").mkdir()
+    (root / SETTINGS_REL).write_text(
+        json.dumps(
+            {
+                "extraKnownMarketplaces": {"jobwright": _same_source_entry(comment="added by hand")},
+                "enabledPlugins": {"jobwright@jobwright": True},
+            }
+        )
+    )
+    res = configure(root)
+    assert res.changed is True
+    assert res.message == "updated (added autoUpdate)"
+    entry = _settings(root)["extraKnownMarketplaces"]["jobwright"]
+    assert entry["autoUpdate"] is True
+    assert entry["comment"] == "added by hand"  # other keys survive the merge
+    assert entry["source"] == {"source": "github", "repo": "kyle-chalmers/jobwright"}
+
+
+def test_merged_autoupdate_is_idempotent(tmp_path):
+    root = _repo(tmp_path)
+    (root / ".claude").mkdir()
+    (root / SETTINGS_REL).write_text(
+        json.dumps({"extraKnownMarketplaces": {"jobwright": _same_source_entry()}})
+    )
+    configure(root)
+    before = (root / SETTINGS_REL).read_bytes()
+    res = configure(root)
+    assert res.changed is False
+    assert res.message == "already configured — unchanged"
+    assert (root / SETTINGS_REL).read_bytes() == before
+
+
+def test_explicit_autoupdate_false_is_kept_and_reported(tmp_path):
+    """Someone chose autoUpdate: false. Keep it and say so — it is not an error."""
+    root = _repo(tmp_path)
+    (root / ".claude").mkdir()
+    (root / SETTINGS_REL).write_text(
+        json.dumps({"extraKnownMarketplaces": {"jobwright": _same_source_entry(autoUpdate=False)}})
+    )
+    res = configure(root)
+    assert "kept autoUpdate: false" in res.message
+    doc = _settings(root)
+    assert doc["extraKnownMarketplaces"]["jobwright"]["autoUpdate"] is False
+    assert doc["enabledPlugins"]["jobwright@jobwright"] is True  # the rest still merges
+
+    configure(root, force=True)
+    assert _settings(root)["extraKnownMarketplaces"]["jobwright"]["autoUpdate"] is True
+
+
 def test_malformed_json_refuses_and_leaves_the_file_alone(tmp_path):
     root = _repo(tmp_path)
     (root / ".claude").mkdir()

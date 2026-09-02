@@ -99,14 +99,14 @@ class DatabricksAdapter(JobPlatformAdapter):
             raise RuntimeError(f"databricks {' '.join(args)}: non-JSON output: {exc}") from exc
 
     def _job_def_dirs(self) -> list[Path]:
-        """Configured job-definition dirs, prod first — so an ambiguous match prefers
-        the prod definition rather than comparing live prod to a dev JSON."""
+        """Configured job-definition dirs resolved from the config root, prod first — so an
+        ambiguous match prefers the prod definition rather than comparing live prod to a dev JSON."""
         dirs: list[Path] = []
         if self.config is not None:
             items = self.config.platform.job_def_dirs or {}
             for env in (["prod"] + [e for e in items if e != "prod"]):
                 if env in items:
-                    dirs.append(Path(items[env]))
+                    dirs.append(self.root / items[env])
         return dirs
 
     def _find_repo_def_file(self, ref: str) -> Path | None:

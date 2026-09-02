@@ -46,8 +46,9 @@ def get_adapter_class(kind: str) -> type[JobPlatformAdapter]:
         ) from None
 
 
-def get_adapter(kind: str, profile: str = "", config=None) -> JobPlatformAdapter:
-    return get_adapter_class(kind)(profile=profile, config=config)
+def get_adapter(kind: str, profile: str = "", config=None, root=None) -> JobPlatformAdapter:
+    """``root`` is the directory holding the config; repo-relative paths resolve from it."""
+    return get_adapter_class(kind)(profile=profile, config=config, root=root)
 
 
 def destructive_patterns_for(kind: str) -> list[dict[str, str]]:

@@ -15,6 +15,7 @@ from typer.testing import CliRunner
 
 from jobwright import wizard
 from jobwright.config import Config, cross_validate
+from jobwright.jobsindex import build_rows, skipped_dirs
 
 REPO = Path(__file__).resolve().parents[1]
 SESSION_HOOK = REPO / "hooks" / "session_start.sh"
@@ -168,6 +169,69 @@ def test_wizard_drops_undetectable_values_instead_of_dying(tmp_path):
         key_prefixes=["JOB"], warehouse="none", job_def_dirs={}, dags_dir="",
     )
     wizard.validate_config_text(text)  # must not raise (YAML stays parseable)
+
+
+def test_wizard_prefers_repo_root_over_retired_jobs_folder(tmp_path):
+    # job folders live at the repo root; a retired-jobs folder holds one old job.
+    # The root must win on count — one match in _archive/ cannot beat twelve at the root.
+    for n in range(12):
+        (tmp_path / f"JOB-{n}_Job_{n}").mkdir()
+    (tmp_path / "_archive" / "JOB-99_Old_Job").mkdir(parents=True)
+    det = wizard.detect(tmp_path, home=tmp_path)
+    assert det.jobs_dir == "."
+    assert det.key_prefixes == ["JOB"]
+
+
+def test_wizard_ranks_jobs_dir_by_job_count(tmp_path):
+    # jobs/ holds three job folders and the root holds one stray: jobs/ still wins
+    for n in range(3):
+        (tmp_path / "jobs" / f"JOB-{n}_Job_{n}").mkdir(parents=True)
+    (tmp_path / "JOB-9_Stray").mkdir()
+    det = wizard.detect(tmp_path, home=tmp_path)
+    assert det.jobs_dir == "jobs"
+
+
+def test_wizard_ranks_a_later_top_level_dir_above_an_earlier_conventional_one(tmp_path):
+    # the case that separates ranking from first-match: jobs/ is tried first and holds one job,
+    # workflows/ comes later in candidate order and holds three. First-match picks jobs/.
+    (tmp_path / "jobs" / "JOB-1_Only").mkdir(parents=True)
+    for n in (2, 3, 4):
+        (tmp_path / "workflows" / f"JOB-{n}_Job_{n}").mkdir(parents=True)
+    det = wizard.detect(tmp_path, home=tmp_path)
+    assert (det.jobs_dir, det.key_prefixes) == ("workflows", ["JOB"])
+
+
+def test_wizard_and_catalog_agree_on_what_a_job_folder_is(tmp_path):
+    # detection (no prefixes known yet) and indexing (prefixes configured) share one predicate:
+    # the key must START the name and the underscore after it is convention, not requirement.
+    # The wizard used to demand the underscore while the catalog matched the key anywhere, so
+    # init and jobs-index disagreed about the same folders.
+    jobs = ["JOB-1_Alpha", "JOB-2-beta", "JOB-3"]
+    not_jobs = ["archive-JOB-4_Old", "xJOB-5_Old", "retired_jobs"]
+    for name in jobs + not_jobs:
+        (tmp_path / name).mkdir()
+    det = wizard.detect(tmp_path, home=tmp_path)
+    assert (det.jobs_dir, det.key_prefixes) == (".", ["JOB"])
+    settings = {"jobs_dir": det.jobs_dir, "key_prefixes": det.key_prefixes}
+    assert [r["dir"] for r in build_rows(tmp_path, settings)] == jobs
+    assert skipped_dirs(tmp_path, settings) == sorted(not_jobs)
+
+
+def test_cli_init_yes_root_layout_summary(tmp_path, monkeypatch):
+    from jobwright.cli import app
+    from jobwright.config import load_config
+
+    for n in range(3):
+        (tmp_path / f"JOB-{n}_Job_{n}").mkdir()
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(app, ["init", "--yes"])
+    assert result.exit_code == 0, result.output
+    cfg = load_config(tmp_path / "jobwright.config.yaml")
+    assert cfg.project.jobs_dir == "." and cross_validate(cfg) == []
+    assert "jobs at the repo root" in result.output  # not the awkward "jobs in ./"
+    # profile + dialect land in a committed file whether detected or typed at the prompt —
+    # say so without claiming to know which
+    assert "confirm these committed settings match your team's convention" in result.output
 
 
 def test_cli_init_interactive_reprompts_and_writes_valid_config(tmp_path, monkeypatch):

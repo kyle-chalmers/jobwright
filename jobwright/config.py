@@ -27,6 +27,9 @@ from typing import Any
 import yaml
 
 CONFIG_FILENAME = "jobwright.config.yaml"
+# How to get one. Plugin users live in Claude Code and may never open a shell, so the
+# skill comes first; the CLI form is for terminals and CI.
+SETUP_HINT = "run /setup in Claude Code, or `jobwright init` from a shell."
 
 # Bumped when the config schema changes shape. ``jobwright doctor`` compares this
 # against a repo's config to catch CLI/repo drift.
@@ -340,7 +343,7 @@ def load_config(path: Path | None = None) -> Config:
     cfg_path = path or find_config()
     if cfg_path is None:
         raise ConfigError(
-            f"no {CONFIG_FILENAME} found (searched cwd and parents). Run 'jobwright init'."
+            f"no {CONFIG_FILENAME} found (searched cwd and parents) — {SETUP_HINT}"
         )
     try:
         data = yaml.safe_load(Path(cfg_path).read_text()) or {}

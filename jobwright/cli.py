@@ -15,7 +15,7 @@ from pathlib import Path
 import typer
 
 from . import __version__
-from .config import CONFIG_FILENAME, ConfigError, find_config, load_config
+from .config import CONFIG_FILENAME, SETUP_HINT, ConfigError, find_config, load_config
 
 app = typer.Typer(
     add_completion=False,
@@ -36,7 +36,7 @@ def _load():
     cfg_path = find_config()
     if cfg_path is None:
         typer.secho(
-            f"No {CONFIG_FILENAME} found (searched cwd and parents). Run `jobwright init`.",
+            f"No {CONFIG_FILENAME} found (searched cwd and parents) — {SETUP_HINT}",
             fg=typer.colors.RED,
         )
         raise typer.Exit(2)
@@ -71,7 +71,7 @@ def doctor() -> None:
     """Check config + environment: platform, profile, CLI availability, adapter."""
     cfg_path = find_config()
     if cfg_path is None:
-        typer.secho(f"✗ no {CONFIG_FILENAME} found — run `jobwright init`.", fg=typer.colors.RED)
+        typer.secho(f"✗ no {CONFIG_FILENAME} found — {SETUP_HINT}", fg=typer.colors.RED)
         raise typer.Exit(1)
     typer.secho(f"✓ config: {cfg_path}", fg=typer.colors.GREEN)
     try:
@@ -99,6 +99,20 @@ def doctor() -> None:
     for err in cross_validate(cfg):
         typer.secho(f"✗ {err}", fg=typer.colors.RED)
         ok = False
+
+    # cross_validate only proves the keys agree with each other. A path that agrees but
+    # points nowhere (the wizard's fallback when nothing was detected) would otherwise
+    # pass, and every downstream scan would quietly find zero files.
+    if cfg.platform.deploy_model in ("api-reset", "sql-ddl"):
+        for env, rel in cfg.platform.job_def_dirs.items():
+            if not (cfg_path.parent / rel).is_dir():
+                typer.secho(
+                    f"✗ platform.job_def_dirs.{env} = {rel} does not exist — drift detection and "
+                    "job-def checks have nothing to scan; point it at the directory holding your "
+                    "job-definition files (or remove that env).",
+                    fg=typer.colors.RED,
+                )
+                ok = False
 
     try:
         from .platforms import adapter_kinds, get_adapter_class
@@ -141,7 +155,7 @@ def jobs_index(
     check: bool = typer.Option(False, "--check", help="exit 1 if JOBS.md/OBJECTS.md are stale (CI gate)"),
 ) -> None:
     """Render <jobs_dir>/JOBS.md + OBJECTS.md + the Obsidian graph layer (deterministic; --check for a CI gate)."""
-    from .jobsindex import settings_from_config, stale_index_paths, write_index
+    from .jobsindex import settings_from_config, skipped_dirs, stale_index_paths, write_index
 
     cfg, root = _load()
     settings = settings_from_config(cfg)
@@ -161,6 +175,16 @@ def jobs_index(
     n_jobs = sum(1 for line in fresh[jobs_md].splitlines() if line.startswith("| ["))
     graph = " + graph layer" if settings.get("graph_notes", True) else ""
     typer.secho(f"Wrote JOBS.md + OBJECTS.md{graph} ({n_jobs} jobs).", fg=typer.colors.GREEN)
+    # A catalog whose purpose is "know what runs" must not hide what it left out: name the
+    # folders whose names do not start with a ticket key (renaming them brings them in).
+    skipped = skipped_dirs(root, settings)
+    if skipped:
+        shown = ", ".join(skipped[:8]) + (", …" if len(skipped) > 8 else "")
+        shape = " or ".join(f"{p}-123_Name" for p in (settings.get("key_prefixes") or ["JOB"]))
+        typer.secho(
+            f"Skipped {len(skipped)} folder(s) not named like {shape}: {shown}",
+            fg=typer.colors.YELLOW,
+        )
 
 
 @app.command("diff-job")
@@ -170,8 +194,8 @@ def diff_job(
     """Diff the LIVE job definition against the repo JSON (drift detection)."""
     from .platforms import get_adapter
 
-    cfg, _ = _load()
-    adapter = get_adapter(cfg.platform.kind, profile=cfg.platform.profile, config=cfg)
+    cfg, root = _load()
+    adapter = get_adapter(cfg.platform.kind, profile=cfg.platform.profile, config=cfg, root=root)
     # Gate on the ADAPTER's deploy_model (authoritative), not config's — a config typo
     # to git-sync must not silently disable live-vs-repo drift detection.
     if adapter.deploy_model == "git-sync":
@@ -339,8 +363,12 @@ def init(
 
     (root / CONFIG_FILENAME).write_text(text)
     typer.secho(f"\nWrote {CONFIG_FILENAME}:", fg=typer.colors.GREEN)
+    jobs_where = "at the repo root" if cfg.project.jobs_dir == "." else f"in {cfg.project.jobs_dir}/"
+    typer.echo(f"  platform {cfg.platform.kind} · deploys: {cfg.platform.deploy_model} · jobs {jobs_where}")
+    # detected here or typed at the prompt, these two land in a committed file either way
     typer.echo(
-        f"  platform {cfg.platform.kind} · deploys: {cfg.platform.deploy_model} · jobs in {cfg.project.jobs_dir}/"
+        f"  profile: {cfg.platform.profile or '(none)'} · warehouse: {cfg.warehouse.dialect} "
+        "— confirm these committed settings match your team's convention."
     )
     typer.echo(
         "  Commented defaults inside cover the rest (ticket links, governance fields, exceptions) — edit anytime."
@@ -514,6 +542,38 @@ check_app = typer.Typer(no_args_is_help=True, help="Run a single generic check (
 app.add_typer(check_app, name="check")
 
 
+def _under_hidden_or_cache(rel: Path) -> bool:
+    """True when a dot-dir or __pycache__ sits anywhere on the way to ``rel``."""
+    return any(part.startswith(".") or part == "__pycache__" for part in rel.parts[:-1])
+
+
+def _expand_dirs(paths: list[str], ext: str) -> list[str]:
+    """Let a check take a directory, as `check architecture` does.
+
+    A directory expands (recursive, sorted) to the files this check handles, skipping
+    dot-dirs and __pycache__ — with the jobs dir at the repo root the notebooks sit one
+    level down, so `check syntax .` has to descend the way `check architecture .` does.
+    A directory holding none is an error, not a silent pass. Anything else passes through
+    untouched, so the tool still reports a missing or unreadable file itself.
+    """
+    out: list[str] = []
+    for raw in paths:
+        p = Path(raw)
+        if not p.is_dir():
+            out.append(raw)
+            continue
+        found = sorted(
+            str(f)
+            for f in p.rglob(f"*{ext}")
+            if f.is_file() and not _under_hidden_or_cache(f.relative_to(p))
+        )
+        if not found:
+            typer.secho(f"no {ext} files in {raw}", fg=typer.colors.RED, err=True)
+            raise typer.Exit(1)
+        out.extend(found)
+    return out
+
+
 @check_app.command("architecture")
 def check_architecture(
     paths: list[str] = typer.Argument(..., help="files or dirs to scan"),
@@ -537,27 +597,27 @@ def check_docs(
 
 
 @check_app.command("syntax")
-def check_syntax(files: list[str] = typer.Argument(..., help="notebook .py files")) -> None:
+def check_syntax(files: list[str] = typer.Argument(..., help="notebook .py files, or directories of them")) -> None:
     """Magic-aware Python syntax check."""
     from .tools import check_notebook_syntax
 
-    raise typer.Exit(check_notebook_syntax.main(files))
+    raise typer.Exit(check_notebook_syntax.main(_expand_dirs(files, ".py")))
 
 
 @check_app.command("job-defs")
-def check_job_defs(files: list[str] = typer.Argument(..., help="job-definition JSON files")) -> None:
+def check_job_defs(files: list[str] = typer.Argument(..., help="job-definition JSON files, or directories of them")) -> None:
     """Validate job-definition JSON (parse + name presence in deployable dirs)."""
     from .tools import validate_job_definitions
 
-    raise typer.Exit(validate_job_definitions.main(files))
+    raise typer.Exit(validate_job_definitions.main(_expand_dirs(files, ".json")))
 
 
 @check_app.command("deps")
-def check_deps(files: list[str] = typer.Argument(..., help="notebook .py files with %pip install pins")) -> None:
+def check_deps(files: list[str] = typer.Argument(..., help="notebook .py files with %pip install pins, or directories of them")) -> None:
     """OSV vulnerability lookup on pinned %pip install packages."""
     from .tools import check_dependency_vulns
 
-    raise typer.Exit(check_dependency_vulns.main(files))
+    raise typer.Exit(check_dependency_vulns.main(_expand_dirs(files, ".py")))
 
 
 @app.command("validate-job")

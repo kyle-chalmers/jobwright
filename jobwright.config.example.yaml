@@ -6,7 +6,7 @@ schema_version: 1
 
 project:
   name: "Acme Data Jobs"
-  key_prefixes: ["JOB"]            # folder/ticket prefixes, e.g. JOB-123_My_Job
+  key_prefixes: ["JOB"]            # folder/ticket prefixes, e.g. JOB-123_My_Job — keep this inline list form: the hooks read it
   jobs_dir: jobs
   # ticket_url_template: "https://acme.atlassian.net/browse/{id}"
   # graph_notes: true              # write an Obsidian graph layer (<jobs_dir>/graph|objects/*.md)

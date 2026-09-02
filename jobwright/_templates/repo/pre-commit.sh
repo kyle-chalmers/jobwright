@@ -33,7 +33,7 @@ done
 
 # jobs_dir from config (same one-line parse the PostToolUse hook uses); default "jobs".
 JOBS_DIR=$(sed -n 's/^[[:space:]]*jobs_dir:[[:space:]]*//p' "$ROOT/jobwright.config.yaml" 2>/dev/null \
-  | head -1 | tr -d "\"'" | tr -d '[:space:]')
+  | head -1 | sed 's/[[:space:]]*#.*$//' | tr -d "\"'" | tr -d '[:space:]')
 [ -n "$JOBS_DIR" ] || JOBS_DIR="jobs"
 JOBS_DIR=${JOBS_DIR%/}
 
@@ -41,7 +41,24 @@ cd "$ROOT" || exit 0
 
 # Only act when this commit actually touches the jobs dir. Commits elsewhere in the repo
 # stay pure — they must not silently absorb catalog changes.
-if ! git diff --cached --name-only --diff-filter=ACMRD -- "$JOBS_DIR" 2>/dev/null | grep -q .; then
+if [ "$JOBS_DIR" = "." ]; then
+  # Root layout: a pathspec of "." matches every staged file, so scope to job-shaped
+  # TOP-LEVEL folders instead — first path segment <PREFIX>-<digits>, then end-of-name or a
+  # separator (JOB-12, JOB-12_Name, JOB-12-name; not archive-JOB-12 or xJOB-12). Prefixes
+  # come from the inline `key_prefixes: [A, B]` list via the same one-line parse as
+  # jobs_dir — the form the wizard writes, so keep prefixes inline; a block list or a missing
+  # key falls back to the upper-case key shape the catalog uses.
+  PREFIXES=$(sed -n 's/^[[:space:]]*key_prefixes:[[:space:]]*\[\([^]]*\)\].*/\1/p' "$ROOT/jobwright.config.yaml" 2>/dev/null \
+    | head -1 | tr -d "\"' \t")
+  case "$PREFIXES" in
+    ""|*[!A-Za-z0-9._,-]*) KEY_RE="[A-Z][A-Z0-9]+" ;;
+    *) KEY_RE=$(printf '%s' "$PREFIXES" | sed 's/\./\\./g; s/,,*/|/g; s/^|//; s/|$//') ;;
+  esac
+  if ! git diff --cached --name-only --diff-filter=ACMRD 2>/dev/null \
+      | grep -Eq "^($KEY_RE)-[0-9]+([^A-Za-z0-9/][^/]*)?/"; then
+    exit 0
+  fi
+elif ! git diff --cached --name-only --diff-filter=ACMRD -- "$JOBS_DIR" 2>/dev/null | grep -q .; then
   exit 0
 fi
 

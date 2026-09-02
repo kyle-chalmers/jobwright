@@ -41,16 +41,38 @@ def _git(*args: str, cwd: Path, env: dict[str, str] | None = None):
     )
 
 
-def _repo(tmp_path: Path, name: str = "repo") -> Path:
-    """A real git repo seeded from the databricks fixture, catalog already committed."""
-    dst = tmp_path / name
-    shutil.copytree(FIXTURE, dst)
+def _seed(dst: Path) -> Path:
+    """Turn a populated directory into a git repo with everything in one seed commit."""
     _git("init", "-q", "-b", "main", cwd=dst)
     _git("config", "user.email", "t@example.com", cwd=dst)
     _git("config", "user.name", "Test", cwd=dst)
     _git("add", "-A", cwd=dst)
     _git("commit", "-qm", "seed", cwd=dst)
     return dst
+
+
+def _repo(tmp_path: Path, name: str = "repo") -> Path:
+    """A real git repo seeded from the databricks fixture, catalog already committed."""
+    dst = tmp_path / name
+    shutil.copytree(FIXTURE, dst)
+    return _seed(dst)
+
+
+def _root_repo(tmp_path: Path) -> Path:
+    """The fixture re-laid-out so the job folder sits at the repo root (``jobs_dir: "."``).
+
+    The committed catalog (JOBS.md, graph/, ...) lands at the root too, so the pre-commit
+    hook's "does this commit touch the jobs dir?" question has no directory to ask about.
+    """
+    dst = tmp_path / "rootrepo"
+    shutil.copytree(FIXTURE, dst)
+    shutil.move(str(dst / "jobs" / "JOB-1_Demo_Report"), str(dst / "JOB-1_Demo_Report"))
+    shutil.rmtree(dst / "jobs")  # the old catalog; regenerated at the root just below
+    cfg = dst / "jobwright.config.yaml"
+    cfg.write_text(cfg.read_text().replace("jobs_dir: jobs", 'jobs_dir: "."'))
+    index = _cli("jobs-index", cwd=dst)
+    assert index.returncode == 0, index.stdout + index.stderr
+    return _seed(dst)
 
 
 def _shim_bin(tmp_path: Path) -> Path:
@@ -69,9 +91,9 @@ def _hook(repo: Path) -> Path:
     return repo / ".git" / "hooks" / "pre-commit"
 
 
-def _make_catalog_stale(repo: Path) -> Path:
+def _make_catalog_stale(repo: Path, jobs_dir: str = "jobs") -> Path:
     """Change a job doc so the rendered catalog no longer matches disk. Returns the doc."""
-    doc = repo / "jobs" / "JOB-1_Demo_Report" / "claude.md"
+    doc = repo / jobs_dir / "JOB-1_Demo_Report" / "claude.md"
     doc.write_text(
         doc.read_text().replace(
             "Daily demo report joining staging orders to the analytics customer view",
@@ -173,6 +195,64 @@ def test_hook_leaves_commits_outside_the_jobs_dir_alone(tmp_path):
 
     files = _git("show", "--pretty=", "--name-only", "HEAD", cwd=repo).stdout.split()
     assert files == ["README.md"], f"unrelated commit pulled in extra paths: {files}"
+
+
+# --- root layout: jobs_dir "." ---------------------------------------------------------
+
+
+def test_root_layout_hook_leaves_a_readme_only_commit_alone(tmp_path):
+    """With jobs_dir ".", a pathspec of "." matches every staged file — so the hook has to
+    scope itself to job-shaped top-level folders or the guarantee above silently dies."""
+    repo = _root_repo(tmp_path)
+    assert _cli("install-precommit", cwd=repo).returncode == 0
+    env = _env(PATH=f"{_shim_bin(tmp_path)}{os.pathsep}{os.environ['PATH']}")
+
+    _make_catalog_stale(repo, ".")  # stale, but this commit touches no job folder
+    (repo / "README.md").write_text("unrelated\n")
+    _git("add", "--", "README.md", cwd=repo)
+    commit = _git("commit", "-m", "unrelated change", cwd=repo, env=env)
+    assert commit.returncode == 0, commit.stderr
+
+    files = _git("show", "--pretty=", "--name-only", "HEAD", cwd=repo).stdout.split()
+    assert files == ["README.md"], f"README-only commit pulled in extra paths: {files}"
+
+
+def test_root_layout_hook_ignores_folders_that_merely_contain_a_key(tmp_path):
+    """The job-folder shape is anchored: archive-JOB-1_x/ is not a job folder."""
+    repo = _root_repo(tmp_path)
+    assert _cli("install-precommit", cwd=repo).returncode == 0
+    env = _env(PATH=f"{_shim_bin(tmp_path)}{os.pathsep}{os.environ['PATH']}")
+
+    _make_catalog_stale(repo, ".")
+    note = repo / "archive-JOB-1_Demo_Report" / "notes.md"
+    note.parent.mkdir()
+    note.write_text("retired\n")
+    _git("add", "--", str(note.relative_to(repo)), cwd=repo)
+    commit = _git("commit", "-m", "archive a job", cwd=repo, env=env)
+    assert commit.returncode == 0, commit.stderr
+
+    files = _git("show", "--pretty=", "--name-only", "HEAD", cwd=repo).stdout.split()
+    assert files == ["archive-JOB-1_Demo_Report/notes.md"], f"pulled in extra paths: {files}"
+
+
+def test_root_layout_hook_regenerates_when_a_job_folder_is_staged(tmp_path):
+    repo = _root_repo(tmp_path)
+    assert _cli("install-precommit", cwd=repo).returncode == 0
+    env = _env(PATH=f"{_shim_bin(tmp_path)}{os.pathsep}{os.environ['PATH']}")
+
+    doc = _make_catalog_stale(repo, ".")
+    _git("add", "--", str(doc.relative_to(repo)), cwd=repo)
+    commit = _git("commit", "-m", "edit job doc", cwd=repo, env=env)
+    assert commit.returncode == 0, commit.stderr
+
+    files = _git("show", "--pretty=", "--name-only", "HEAD", cwd=repo).stdout.split()
+    assert "JOBS.md" in files, "regenerated catalog should ride along in the commit"
+    assert "graph/JOB-1.md" in files, "graph layer should ride along too"
+    assert "Rewritten purpose" in (repo / "JOBS.md").read_text()
+    assert _git("status", "--porcelain", cwd=repo).stdout.strip() == ""
+
+
+# --- fail-open / portability -----------------------------------------------------------
 
 
 def test_hook_is_a_clean_noop_outside_a_jobwright_repo(tmp_path):
