@@ -413,3 +413,48 @@ def test_gen_readme_writes_readme_when_none_exists_and_a_sibling_otherwise(tmp_p
     assert (tmp_path / "README.md").read_text() == text
     r = CliRunner().invoke(app, ["gen-readme", "-o", "README.md"])
     assert r.exit_code == 1 and "already exists" in r.output
+
+
+def test_local_config_overrides_the_profile_and_records_its_source(tmp_path, monkeypatch):
+    from jobwright.config import load_config
+    (tmp_path / "JOB-1_A").mkdir()
+    (tmp_path / "jobwright.config.yaml").write_text(API_RESET_CFG)
+    monkeypatch.chdir(tmp_path)
+    cfg = load_config()
+    assert cfg.platform.profile_source in ("", "team")
+    (tmp_path / "jobwright.config.local.yaml").write_text("platform:\n  profile: mine\n")
+    cfg = load_config()
+    assert (cfg.platform.profile, cfg.platform.profile_source) == ("mine", "local")
+
+
+def test_local_config_rejects_team_keys(tmp_path, monkeypatch):
+    import pytest
+
+    from jobwright.config import ConfigError, load_config
+    (tmp_path / "jobwright.config.yaml").write_text(API_RESET_CFG)
+    (tmp_path / "jobwright.config.local.yaml").write_text("platform:\n  deploy_model: git-sync\n")
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(ConfigError, match="not a per-user setting"):
+        load_config()
+    (tmp_path / "jobwright.config.local.yaml").write_text("project:\n  jobs_dir: elsewhere\n")
+    with pytest.raises(ConfigError, match="project.jobs_dir"):
+        load_config()
+
+
+def test_init_writes_the_profile_to_the_local_file_and_gitignores_it(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from jobwright import wizard
+    from jobwright.cli import app
+    (tmp_path / "JOB-1_A").mkdir()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(wizard, "_sniff_profile", lambda kind, home: "mine")
+    r = CliRunner().invoke(app, ["init", "--yes", "--no-claude-settings"])
+    assert r.exit_code == 0, r.output
+    team = (tmp_path / "jobwright.config.yaml").read_text()
+    assert not any(line.strip().startswith("profile:") for line in team.splitlines())
+    assert "profile: mine" in (tmp_path / "jobwright.config.local.yaml").read_text()
+    assert "jobwright.config.local.yaml" in (tmp_path / ".gitignore").read_text().split()
+    assert "gitignored" in r.output
+    d = CliRunner().invoke(app, ["doctor"])
+    assert "platform.profile  = mine (jobwright.config.local.yaml)" in d.output

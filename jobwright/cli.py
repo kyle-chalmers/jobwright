@@ -81,7 +81,8 @@ def doctor() -> None:
         raise typer.Exit(1) from None
 
     typer.echo(f"  platform.kind     = {cfg.platform.kind}")
-    typer.echo(f"  platform.profile  = {cfg.platform.profile or '(none)'}")
+    src = {"local": " (jobwright.config.local.yaml)", "team": " (jobwright.config.yaml — a team default)"}.get(cfg.platform.profile_source, "")
+    typer.echo(f"  platform.profile  = {cfg.platform.profile or '(none — set yours in jobwright.config.local.yaml)'}{src}")
     typer.echo(f"  deploy_model      = {cfg.platform.deploy_model}")
     typer.echo(f"  warehouse.dialect = {cfg.warehouse.dialect}")
     typer.echo(f"  jobs_dir          = {cfg.project.jobs_dir}")
@@ -365,10 +366,13 @@ def init(
     typer.secho(f"\nWrote {CONFIG_FILENAME}:", fg=typer.colors.GREEN)
     jobs_where = "at the repo root" if cfg.project.jobs_dir == "." else f"in {cfg.project.jobs_dir}/"
     typer.echo(f"  platform {cfg.platform.kind} · deploys: {cfg.platform.deploy_model} · jobs {jobs_where}")
-    # detected here or typed at the prompt, these two land in a committed file either way
+    # the profile is per-user: it goes to the gitignored local file, never the committed one
+    local_note = "(none)"
+    if profile and DEPLOY_MODEL_BY_KIND[kind] != "git-sync":
+        local_note = _write_local_config(root, profile)
+    typer.echo(f"  profile: {local_note}")
     typer.echo(
-        f"  profile: {cfg.platform.profile or '(none)'} · warehouse: {cfg.warehouse.dialect} "
-        "— confirm these committed settings match your team's convention."
+        f"  warehouse: {cfg.warehouse.dialect} — committed; confirm it matches your team's convention."
     )
     typer.echo(
         "  Commented defaults inside cover the rest (ticket links, governance fields, exceptions) — edit anytime."
@@ -382,6 +386,28 @@ def init(
         "Then: `jobwright install-precommit` — keeps the generated catalog committed with the job\n"
         "  docs, so a stale catalog never shows up as phantom uncommitted changes in a worktree."
     )
+
+
+def _write_local_config(root: Path, profile: str) -> str:
+    """Write jobwright.config.local.yaml (unless present) and make sure git ignores it."""
+    from .config import LOCAL_CONFIG_FILENAME
+    from .wizard import compose_local_config
+
+    local = root / LOCAL_CONFIG_FILENAME
+    if local.exists():
+        note = f"{profile} — {LOCAL_CONFIG_FILENAME} already exists, left as is"
+    else:
+        local.write_text(compose_local_config(profile))
+        note = f"{profile} ({LOCAL_CONFIG_FILENAME} — yours, gitignored)"
+    gi = root / ".gitignore"
+    lines = gi.read_text().splitlines() if gi.exists() else []
+    if LOCAL_CONFIG_FILENAME not in [ln.strip() for ln in lines]:
+        with gi.open("a") as fh:
+            if lines and not gi.read_text().endswith("\n"):
+                fh.write("\n")
+            fh.write(f"{LOCAL_CONFIG_FILENAME}\n")
+        note += "; added to .gitignore"
+    return note
 
 
 def _configure_claude(root: Path, force: bool) -> bool:

@@ -13,9 +13,19 @@
 # names a version PyPI does not have yet.
 set -euo pipefail
 
-# Escape hatch: an explicit interpreter/binary wins over everything.
+# Escape hatch: an explicit interpreter/binary wins over everything — unless it points back at
+# this script (or a shim that forwards here), which would recurse forever. Then ignore it.
 if [ -n "${JOBWRIGHT_BIN:-}" ]; then
-  exec "$JOBWRIGHT_BIN" "$@"
+  _self="$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
+  _bin="$JOBWRIGHT_BIN"
+  while [ -L "$_bin" ]; do _t="$(readlink "$_bin")"; case "$_t" in /*) _bin="$_t" ;; *) _bin="$(dirname -- "$_bin")/$_t" ;; esac; done
+  _bin="$(cd -P -- "$(dirname -- "$_bin")" 2>/dev/null && pwd)/$(basename -- "$_bin")"
+  if [ "$_bin" = "$_self" ] || grep -qs 'jobwright-plugin\|JOBWRIGHT_BIN' "$_bin" 2>/dev/null; then
+    echo "jobwright: JOBWRIGHT_BIN=$JOBWRIGHT_BIN forwards back to this launcher — ignoring it." >&2
+    unset JOBWRIGHT_BIN
+  else
+    exec "$JOBWRIGHT_BIN" "$@"
+  fi
 fi
 
 # Walk BASH_SOURCE through any symlinks to find where this script actually lives.

@@ -23,7 +23,9 @@ the wizard pre-fills every answer from what it finds, so a typical setup is 5 co
    jobwright init
    ```
    It detects the platform (and your CLI profile, jobs directory, ticket prefixes), asks **at most
-   5 questions** with the detected values pre-filled, and writes `jobwright.config.yaml`. Everything
+   5 questions** with the detected values pre-filled, and writes `jobwright.config.yaml` — plus your
+   CLI profile name to `jobwright.config.local.yaml`, which is yours and gitignored (a profile name is
+   per-machine, so it never goes in the committed file). Everything
    not asked ships as a **commented default** in the file — edit anytime. The config is validated
    before it is written, including the interdependent keys (where job definitions live depends on
    how the platform deploys), so a broken combination is rejected with a clear error instead of

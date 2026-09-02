@@ -3,6 +3,22 @@
 All notable changes to jobwright are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions follow semver.
 
+## [0.4.0] — 2026-09-02
+
+### Changed
+- **The CLI profile name is per-user now, not team config.** `platform.profile` used to be written
+  into the committed `jobwright.config.yaml` by `init` — one person's `~/.databrickscfg` profile name
+  handed to the whole team, when every machine names its profiles differently. `init` now writes it
+  to `jobwright.config.local.yaml` (yours alone; `init` adds it to `.gitignore`), and the team file
+  carries only a commented, optional team default. A local file may set **only** per-user keys
+  (`platform.profile` today); any other key is rejected with a message naming the file it belongs in,
+  so team config cannot drift into a file nobody reviews. `doctor` shows the resolved profile and
+  where it came from. Existing configs keep working: a committed `profile:` is still honored and a
+  local file overrides it.
+
+### Docs
+- README, the setup skill, the config example and the platform adapter notes describe the two files.
+
 ## [0.3.2] — 2026-09-02
 
 ### Added

@@ -16,7 +16,8 @@ project:
 # --- platform seam: the orchestrator a job RUNS ON --------------------------
 platform:
   kind: databricks                 # databricks | airflow | dbt | dagster | prefect | snowflake_tasks | glue | adf
-  profile: prod                    # CLI profile NAME (never a token/secret)
+  # profile: prod                  # optional TEAM default. Each person's own profile name goes in
+                                   # jobwright.config.local.yaml (gitignored) — `jobwright init` writes it.
   deploy_model: api-reset          # api-reset | git-sync | sql-ddl
   job_def_dirs:                    # api-reset / sql-ddl platforms keep definitions in the repo
     dev: databricks/job_definitions/dev

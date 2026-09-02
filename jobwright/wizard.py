@@ -268,10 +268,10 @@ def compose_config(
         "platform:",
         f"  kind: {kind}",
     ]
-    if profile:
-        lines.append(f"  profile: {profile}              # CLI profile NAME (never a token/secret)")
-    else:
-        lines.append("  # profile: prod                # CLI profile NAME (never a token/secret)")
+    # A CLI profile name is per-user (each machine names its own), so it never lands in this
+    # committed file: `init` writes it to jobwright.config.local.yaml. A team-wide default may
+    # be set here by hand and a local file still overrides it.
+    lines.append("  # profile: prod                # optional TEAM default; each person sets theirs in jobwright.config.local.yaml")
     lines.append(f"  deploy_model: {deploy_model}      # how deploys work; `jobwright doctor` validates this")
     if deploy_model == "git-sync":
         # the adapter reads dags_dir as its code-dir override, so the fallback must match
@@ -317,3 +317,15 @@ def validate_config_text(text: str) -> Config:
     if errors:
         raise ConfigError("; ".join(errors))
     return cfg
+
+
+def compose_local_config(profile: str) -> str:
+    """The per-user file: machine-local values only, gitignored, never committed."""
+    return "\n".join([
+        "# jobwright.config.local.yaml — YOUR machine only (gitignored). Written by `jobwright init`.",
+        "# Only per-user values live here; team config stays in jobwright.config.yaml.",
+        "",
+        "platform:",
+        f"  profile: {profile}              # your CLI profile NAME (never a token/secret)",
+        "",
+    ])

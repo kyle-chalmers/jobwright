@@ -20,13 +20,17 @@ semicolons, shell metacharacters) is rejected before it can reach a template.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 CONFIG_FILENAME = "jobwright.config.yaml"
+# Per-user, gitignored sibling. May set ONLY machine-local values (a CLI profile name is one:
+# every person's ~/.databrickscfg-style file names its own). Team config never goes here.
+LOCAL_CONFIG_FILENAME = "jobwright.config.local.yaml"
+LOCAL_KEYS = {("platform", "profile")}
 # How to get one. Plugin users live in Claude Code and may never open a shell, so the
 # skill comes first; the CLI form is for terminals and CI.
 SETUP_HINT = "run /setup in Claude Code, or `jobwright init` from a shell."
@@ -159,6 +163,7 @@ class PlatformCfg:
     profile: str = ""
     job_def_dirs: dict[str, str] = field(default_factory=dict)
     dags_dir: str = ""
+    profile_source: str = ""  # "local" (jobwright.config.local.yaml) | "team" (jobwright.config.yaml) | ""
 
     @classmethod
     def from_dict(cls, d: dict) -> PlatformCfg:
@@ -349,4 +354,29 @@ def load_config(path: Path | None = None) -> Config:
         data = yaml.safe_load(Path(cfg_path).read_text()) or {}
     except yaml.YAMLError as exc:  # pragma: no cover - passthrough
         raise ConfigError(f"{cfg_path}: invalid YAML: {exc}") from exc
-    return Config.from_dict(data)
+    source = "team" if (data.get("platform") or {}).get("profile") else ""
+    local_path = Path(cfg_path).with_name(LOCAL_CONFIG_FILENAME)
+    if local_path.is_file():
+        try:
+            local = yaml.safe_load(local_path.read_text()) or {}
+        except yaml.YAMLError as exc:  # pragma: no cover - passthrough
+            raise ConfigError(f"{local_path}: invalid YAML: {exc}") from exc
+        if not isinstance(local, dict):
+            raise ConfigError(f"{local_path}: must be a YAML mapping")
+        for section, body in local.items():
+            keys = [(section, k) for k in body] if isinstance(body, dict) else [(section, None)]
+            for key in keys:
+                if key not in LOCAL_KEYS:
+                    dotted = f"{key[0]}.{key[1]}" if key[1] else str(key[0])
+                    raise ConfigError(
+                        f"{local_path}: {dotted!r} is not a per-user setting — {LOCAL_CONFIG_FILENAME} may only set "
+                        f"platform.profile; everything else is team config and belongs in {CONFIG_FILENAME}."
+                    )
+        local_profile = (local.get("platform") or {}).get("profile")
+        if local_profile:
+            data.setdefault("platform", {})["profile"] = local_profile
+            source = "local"
+    cfg = Config.from_dict(data)
+    if source and cfg.platform.profile:
+        cfg = replace(cfg, platform=replace(cfg.platform, profile_source=source))
+    return cfg
