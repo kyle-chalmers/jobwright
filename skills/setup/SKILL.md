@@ -40,6 +40,9 @@ the wizard pre-fills every answer from what it finds, so a typical setup is 5 co
 6. Build the catalog: `jobwright jobs-index` (writes `JOBS.md` + `OBJECTS.md`).
 7. Optional rulebook: `jobwright gen-agents` — writes `AGENTS.jobwright.md` by default so an
    existing `AGENTS.md` is never overwritten; pass `-o AGENTS.md` only when the repo has none.
+8. Human-facing README: `jobwright gen-readme` — a short page on what the repo is and how work
+   moves through it. Writes `README.md` when the repo has none, otherwise `README.jobwright.md` for
+   the person to merge; it never overwrites an existing README.
 
 ## Done when
 

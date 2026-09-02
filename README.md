@@ -67,7 +67,7 @@ In that repo:
 /start-job JOB-1234 "Daily Revenue Rollup"   # the front door
 ```
 
-`/setup` detects your platform and pre-fills every answer, so a typical setup is five
+`/setup` also offers `jobwright gen-readme`, a short human-facing README (or `README.jobwright.md` to merge when one exists) so people, not just agents, can find their way around. `/setup` detects your platform and pre-fills every answer, so a typical setup is five
 confirmations. If your job folders sit at the repo root rather than under `jobs/`, the wizard
 detects that too and proposes `jobs_dir: "."`; the catalog (`JOBS.md`, `OBJECTS.md`, `graph/`,
 `objects/`) then lands at the root, and the hooks that keep it fresh react only to edits and
@@ -160,7 +160,7 @@ for repos that use jobwright without Claude Code.
 jobwright init [--yes] [--force] | doctor | jobs-index [--check]
           validate-job <folder> [--offline] | diff-job <job>
           check {syntax|job-defs|deps|architecture|docs} <paths>
-          new-job <ticket> "<name>" | gen-agents
+          new-job <ticket> "<name>" | gen-agents | gen-readme
           configure-claude [--force] | install-precommit [--force]
 ```
 

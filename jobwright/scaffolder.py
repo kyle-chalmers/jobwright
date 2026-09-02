@@ -94,3 +94,8 @@ def new_job(cfg, root, ticket: str, name: str, today: str, force: bool = False) 
 
 def render_agents_md(cfg) -> str:
     return _env().get_template("repo/AGENTS.md.j2").render(cfg=cfg)
+
+
+def render_readme_md(cfg) -> str:
+    """A short human-facing README: what the repo is and how work moves through it."""
+    return _env().get_template("repo/README.jobwright.md.j2").render(cfg=cfg)

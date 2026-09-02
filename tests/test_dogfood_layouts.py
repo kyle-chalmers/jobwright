@@ -389,3 +389,27 @@ def test_regen_hook_root_layout_falls_back_to_the_generic_key_shape(tmp_path, mo
     (tmp_path / "jobwright.config.yaml").write_text(API_RESET_CFG + "  key_prefixes:\n    - JOB\n")
     assert _run_regen_hook(tmp_path, monkeypatch, "JOB-1_Alpha/job.py") == 0
     assert (tmp_path / "JOBS.md").is_file()
+
+
+def test_gen_readme_writes_readme_when_none_exists_and_a_sibling_otherwise(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from jobwright.cli import app
+    for n in range(2):
+        (tmp_path / f"JOB-{n}_Job_{n}").mkdir()
+    (tmp_path / "jobwright.config.yaml").write_text(API_RESET_CFG)
+    monkeypatch.chdir(tmp_path)
+    r = CliRunner().invoke(app, ["gen-readme"])
+    assert r.exit_code == 0, r.output
+    text = (tmp_path / "README.md").read_text()
+    assert "{{" not in text and "}}" not in text
+    assert "/start-job" in text and "JOBS.md" in text and "OBJECTS.md" in text
+    prose = [line for line in text.splitlines() if line.strip() and not line.startswith("|") and not line.startswith("#")]
+    assert sum(len(line.split()) for line in prose) <= 250
+    # a README now exists: the default target becomes the sibling, and nothing is overwritten
+    r = CliRunner().invoke(app, ["gen-readme"])
+    assert r.exit_code == 0, r.output
+    assert (tmp_path / "README.jobwright.md").is_file()
+    assert (tmp_path / "README.md").read_text() == text
+    r = CliRunner().invoke(app, ["gen-readme", "-o", "README.md"])
+    assert r.exit_code == 1 and "already exists" in r.output
