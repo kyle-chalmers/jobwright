@@ -155,7 +155,7 @@ def jobs_index(
     check: bool = typer.Option(False, "--check", help="exit 1 if JOBS.md/OBJECTS.md are stale (CI gate)"),
 ) -> None:
     """Render <jobs_dir>/JOBS.md + OBJECTS.md + the Obsidian graph layer (deterministic; --check for a CI gate)."""
-    from .jobsindex import settings_from_config, stale_index_paths, write_index
+    from .jobsindex import settings_from_config, skipped_dirs, stale_index_paths, write_index
 
     cfg, root = _load()
     settings = settings_from_config(cfg)
@@ -175,6 +175,16 @@ def jobs_index(
     n_jobs = sum(1 for line in fresh[jobs_md].splitlines() if line.startswith("| ["))
     graph = " + graph layer" if settings.get("graph_notes", True) else ""
     typer.secho(f"Wrote JOBS.md + OBJECTS.md{graph} ({n_jobs} jobs).", fg=typer.colors.GREEN)
+    # A catalog whose purpose is "know what runs" must not hide what it left out: name the
+    # folders whose names carry no ticket key (renaming them brings them in).
+    skipped = skipped_dirs(root, settings)
+    if skipped:
+        shown = ", ".join(skipped[:8]) + (", …" if len(skipped) > 8 else "")
+        prefix = (settings.get("key_prefixes") or ["JOB"])[0]
+        typer.secho(
+            f"Skipped {len(skipped)} folder(s) not named like {prefix}-123_Name: {shown}",
+            fg=typer.colors.YELLOW,
+        )
 
 
 @app.command("diff-job")

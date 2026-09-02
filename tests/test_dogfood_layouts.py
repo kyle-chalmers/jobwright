@@ -120,3 +120,58 @@ def test_missing_config_hint_works_for_plugin_users(tmp_path, monkeypatch):
     assert index.exit_code == 2 and SETUP_HINT in index.output
     with pytest.raises(ConfigError, match=re.escape(SETUP_HINT)):
         load_config()
+
+
+# --------------------------------------------------------------------------- #
+# jobs-index: folders the catalog skipped are named, never hidden
+# --------------------------------------------------------------------------- #
+ROOT_LAYOUT_CFG = API_RESET_CFG + "  key_prefixes: [JOB]\n"
+
+
+def _job_repo(tmp_path, *names: str) -> None:
+    _write_cfg(tmp_path, ROOT_LAYOUT_CFG)
+    for name in names:
+        (tmp_path / name).mkdir()
+        if name.startswith("JOB-"):
+            (tmp_path / name / "claude.md").write_text(f"# Job: {name}\n")
+            (tmp_path / name / "job.py").write_text("df = spark.sql('SELECT 1 FROM ANALYTICS.VW_DEMO')\n")
+
+
+def test_jobs_index_names_the_folders_it_skipped(tmp_path, monkeypatch):
+    # jobs_dir is the repo root: real work folders whose names carry no ticket key used to
+    # vanish from the catalog with nothing in the output saying so
+    _job_repo(tmp_path, "JOB-1_Alpha", "JOB-2_Beta", "retired_jobs")
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(app, ["jobs-index"])
+    assert result.exit_code == 0, result.output
+    assert "(2 jobs)" in result.output
+    assert "Skipped 1 folder(s) not named like JOB-123_Name: retired_jobs" in result.output
+    # the catalog files themselves are unchanged (determinism / golden tests)
+    assert "retired_jobs" not in (tmp_path / "JOBS.md").read_text()
+
+
+def test_jobs_index_stays_quiet_when_every_folder_matches(tmp_path, monkeypatch):
+    _job_repo(tmp_path, "JOB-1_Alpha", "JOB-2_Beta")
+    monkeypatch.chdir(tmp_path)
+    runner = CliRunner()
+    first = runner.invoke(app, ["jobs-index"])
+    assert first.exit_code == 0, first.output
+    assert "Skipped" not in first.output
+    # the second run sees the generated graph/objects dirs; dot-dirs and caches are expected too
+    assert (tmp_path / "graph").is_dir() and (tmp_path / "objects").is_dir()
+    (tmp_path / ".claude").mkdir()
+    (tmp_path / "__pycache__").mkdir()
+    second = runner.invoke(app, ["jobs-index"])
+    assert second.exit_code == 0, second.output
+    assert "Skipped" not in second.output
+
+
+def test_jobs_index_skipped_list_is_capped(tmp_path, monkeypatch):
+    extras = [f"folder_{i:02d}" for i in range(10)]
+    _job_repo(tmp_path, "JOB-1_Alpha", *extras)
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(app, ["jobs-index"])
+    assert result.exit_code == 0, result.output
+    assert "Skipped 10 folder(s)" in result.output
+    assert ", ".join(extras[:8]) + ", …" in result.output
+    assert extras[8] not in result.output

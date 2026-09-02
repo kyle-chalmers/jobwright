@@ -268,6 +268,23 @@ def build_rows(root: Path, settings: dict) -> list[dict]:
     return rows
 
 
+def skipped_dirs(root: Path, settings: dict) -> list[str]:
+    """Folders in ``jobs_dir`` that ``build_rows`` leaves out because their name carries no
+    ticket key — real work the catalog cannot see until it is renamed. Kept separate from
+    ``build_rows`` so the rendered files (and their golden tests) do not change; the CLI reports
+    it. The generated graph dirs, dot-dirs and ``__pycache__`` belong there and are not listed."""
+    base = root / settings.get("jobs_dir", "jobs")
+    if not base.is_dir():
+        return []
+    key_re = key_regex(settings.get("key_prefixes") or [])
+    generated = {p.name for p in graph_dirs(root, settings)}
+    return sorted(
+        d.name for d in base.iterdir()
+        if d.is_dir() and not key_re.search(d.name)
+        and d.name not in generated and not d.name.startswith(".") and d.name != "__pycache__"
+    )
+
+
 def md_escape(s) -> str:
     return (str(s) if s is not None else "").replace("|", "\\|").replace("\n", " ").strip()
 
