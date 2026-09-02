@@ -40,13 +40,33 @@ def _find_config(cwd: str) -> Path | None:
     return None
 
 
-def _jobs_dir(config_path: Path) -> str:
+def _config_text(config_path: Path) -> str:
     try:
-        text = config_path.read_text(errors="replace")
+        return config_path.read_text(errors="replace")
     except OSError:
-        return "jobs"
+        return ""
+
+
+def _jobs_dir(text: str) -> str:
     m = re.search(r"^\s*jobs_dir:\s*[\"']?([A-Za-z0-9._/-]+)", text, re.MULTILINE)
     return m.group(1) if m else "jobs"
+
+
+def _job_folder_re(text: str) -> re.Pattern:
+    """Root layout: what a job folder's name looks like at the top level of the repo.
+
+    Anchored <PREFIX>-<digits>, then end-of-name or a separator (JOB-12, JOB-12_Name, JOB-12-name;
+    not archive-JOB-12 or xJOB-12). Prefixes come from the inline ``key_prefixes: [A, B]``
+    list via the same one-line parse as jobs_dir; a block list or a missing key falls back
+    to the generic PREFIX shape the catalog itself uses.
+    """
+    m = re.search(r"^\s*key_prefixes:\s*\[([^\]]*)\]", text, re.MULTILINE)
+    prefixes = [p.strip().strip("\"'") for p in m.group(1).split(",") if p.strip()] if m else []
+    if prefixes and all(re.fullmatch(r"[A-Za-z0-9._-]+", p) for p in prefixes):
+        key = "|".join(re.escape(p) for p in prefixes)
+    else:
+        key = r"[A-Z][A-Z0-9]+"
+    return re.compile(rf"^(?:{key})-[0-9]+(?:[^A-Za-z0-9]|$)")
 
 
 def main() -> int:
@@ -63,17 +83,23 @@ def main() -> int:
     if config_path is None:
         return 0
     root = config_path.parent
-    jobs_dir = _jobs_dir(config_path)
+    text = _config_text(config_path)
+    jobs_dir = _jobs_dir(text)
 
     try:
         norm = Path(fp).resolve()
         jobs_root = (root / jobs_dir).resolve()
+        at_root = jobs_root == root.resolve()
     except OSError:
         return 0
     # the edited file must be genuinely under THIS repo's jobs dir (no substring confusion)
     try:
-        norm.relative_to(jobs_root)
+        rel = norm.relative_to(jobs_root)
     except ValueError:
+        return 0
+    # Root layout (jobs_dir "."): every file in the repo is "under" the jobs dir, so only an
+    # edit inside a job-shaped top-level folder — the folders the catalog lists — counts.
+    if at_root and (len(rel.parts) < 2 or not _job_folder_re(text).match(rel.parts[0])):
         return 0
     if norm.name in GENERATED:
         return 0

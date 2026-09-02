@@ -2,18 +2,28 @@
 folders at the repo root, a retired-jobs folder, no job-definitions tree):
 ``doctor`` must catch ``job_def_dirs`` that point nowhere, the file-based checks
 must accept a directory the way ``check architecture`` already does, and the
-no-config hint must work for plugin users who never open a shell.
+no-config hint must work for plugin users who never open a shell. With the jobs dir at the
+repo root every file is "under" it, so the PostToolUse catalog rebuild has to scope itself to
+job-shaped top-level folders instead of firing on every edit in the repo.
 """
 
 from __future__ import annotations
 
+import importlib.util
+import io
+import json
 import re
+import sys
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
 
 from jobwright.cli import app
 from jobwright.config import ConfigError, load_config
+
+REPO = Path(__file__).resolve().parent.parent
+REGEN_HOOK = REPO / "hooks" / "regenerate_jobs_index.py"
 
 API_RESET_CFG = (
     "platform:\n  kind: databricks\n  deploy_model: api-reset\n"
@@ -175,3 +185,55 @@ def test_jobs_index_skipped_list_is_capped(tmp_path, monkeypatch):
     assert "Skipped 10 folder(s)" in result.output
     assert ", ".join(extras[:8]) + ", …" in result.output
     assert extras[8] not in result.output
+
+
+# --------------------------------------------------------------------------- #
+# regen hook: with jobs_dir "." only job-shaped top-level folders count
+# --------------------------------------------------------------------------- #
+def _run_regen_hook(tmp_path, monkeypatch, edited: str) -> int:
+    """Drive the PostToolUse hook's main() as Claude Code would: payload on stdin."""
+    spec = importlib.util.spec_from_file_location("regenerate_jobs_index", REGEN_HOOK)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    payload = {
+        "tool_name": "Write",
+        "tool_input": {"file_path": str(tmp_path / edited)},
+        "cwd": str(tmp_path),
+    }
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
+    return mod.main()
+
+
+def test_regen_hook_root_layout_rebuilds_for_an_edit_inside_a_job_folder(tmp_path, monkeypatch):
+    _job_repo(tmp_path, "JOB-1_Alpha")
+    assert _run_regen_hook(tmp_path, monkeypatch, "JOB-1_Alpha/job.py") == 0
+    assert "JOB-1" in (tmp_path / "JOBS.md").read_text()
+
+
+@pytest.mark.parametrize(
+    "edited",
+    [
+        "README.md",                    # a top-level file
+        "retired_jobs/notes.md",        # a folder with no ticket key
+        "archive-JOB-1_Alpha/notes.md", # the key is not at the start of the name
+        "xJOB-1_Alpha/job.py",          # nor glued onto another word
+        "JOB-1.md",                     # a job-shaped *file* is not a job folder
+    ],
+)
+def test_regen_hook_root_layout_ignores_edits_outside_job_folders(tmp_path, monkeypatch, edited):
+    _job_repo(tmp_path, "JOB-1_Alpha", "retired_jobs")
+    target = tmp_path / edited
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("x\n")
+    assert _run_regen_hook(tmp_path, monkeypatch, edited) == 0
+    assert not (tmp_path / "JOBS.md").exists(), f"edit to {edited} should not rebuild the catalog"
+
+
+def test_regen_hook_root_layout_falls_back_to_the_generic_key_shape(tmp_path, monkeypatch):
+    # a block-list key_prefixes defeats the hook's one-line parse; <PREFIX>-<digits> must still count
+    _job_repo(tmp_path, "JOB-1_Alpha")
+    (tmp_path / "jobwright.config.yaml").write_text(API_RESET_CFG + "  key_prefixes:\n    - JOB\n")
+    assert _run_regen_hook(tmp_path, monkeypatch, "JOB-1_Alpha/job.py") == 0
+    assert (tmp_path / "JOBS.md").is_file()

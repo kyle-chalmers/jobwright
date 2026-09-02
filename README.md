@@ -69,10 +69,12 @@ In that repo:
 `/setup` detects your platform and pre-fills every answer, so a typical setup is five
 confirmations. If your job folders sit at the repo root rather than under `jobs/`, the wizard
 detects that too and proposes `jobs_dir: "."`; the catalog (`JOBS.md`, `OBJECTS.md`, `graph/`,
-`objects/`) then lands at the root. Set `project.graph_notes: false` to skip the two graph
-directories. `/start-job` then owns the lifecycle — it recalls prior work from the
-catalog, scaffolds (or resumes) the job, drafts its documentation *from the code*, gates it
-with `jobwright validate-job`, and routes to `/safe-deploy` when it's ready to ship.
+`objects/`) then lands at the root, and the hooks that keep it fresh react only to edits and
+commits inside job folders (`JOB-123_Name/`), not to every file in the repo. Set
+`project.graph_notes: false` to skip the two graph directories. `/start-job` then owns the
+lifecycle — it recalls prior work from the catalog, scaffolds (or resumes) the job, drafts its
+documentation *from the code*, gates it with `jobwright validate-job`, and routes to
+`/safe-deploy` when it's ready to ship.
 
 ## The skills
 
@@ -166,7 +168,8 @@ folders, so a job doc that lands without its regenerated catalog leaves the comm
 stale — and then every worktree branched from that commit inherits the drift, which the
 PostToolUse rebuild surfaces as phantom uncommitted changes in sessions that never touched
 those files. The hook regenerates the catalog and stages it into the same commit as the docs
-that produced it. It is repo-gated, scoped to commits that touch the jobs dir, and fails open.
+that produced it. It is repo-gated, scoped to commits that touch the jobs dir (with
+`jobs_dir: "."`, to commits that touch a job folder), and fails open.
 
 ## Installing without the plugin
 
