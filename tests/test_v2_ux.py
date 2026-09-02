@@ -170,6 +170,42 @@ def test_wizard_drops_undetectable_values_instead_of_dying(tmp_path):
     wizard.validate_config_text(text)  # must not raise (YAML stays parseable)
 
 
+def test_wizard_prefers_repo_root_over_retired_jobs_folder(tmp_path):
+    # job folders live at the repo root; a retired-jobs folder holds one old job.
+    # The root must win on count — one match in _archive/ cannot beat twelve at the root.
+    for n in range(12):
+        (tmp_path / f"JOB-{n}_Job_{n}").mkdir()
+    (tmp_path / "_archive" / "JOB-99_Old_Job").mkdir(parents=True)
+    det = wizard.detect(tmp_path, home=tmp_path)
+    assert det.jobs_dir == "."
+    assert det.key_prefixes == ["JOB"]
+
+
+def test_wizard_ranks_jobs_dir_by_job_count(tmp_path):
+    # jobs/ holds three job folders and the root holds one stray: jobs/ still wins
+    for n in range(3):
+        (tmp_path / "jobs" / f"JOB-{n}_Job_{n}").mkdir(parents=True)
+    (tmp_path / "JOB-9_Stray").mkdir()
+    det = wizard.detect(tmp_path, home=tmp_path)
+    assert det.jobs_dir == "jobs"
+
+
+def test_cli_init_yes_root_layout_summary(tmp_path, monkeypatch):
+    from jobwright.cli import app
+    from jobwright.config import load_config
+
+    for n in range(3):
+        (tmp_path / f"JOB-{n}_Job_{n}").mkdir()
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(app, ["init", "--yes"])
+    assert result.exit_code == 0, result.output
+    cfg = load_config(tmp_path / "jobwright.config.yaml")
+    assert cfg.project.jobs_dir == "." and cross_validate(cfg) == []
+    assert "jobs at the repo root" in result.output  # not the awkward "jobs in ./"
+    # profile + dialect come from this laptop but land in a committed file — say so
+    assert "detected on this machine" in result.output
+
+
 def test_cli_init_interactive_reprompts_and_writes_valid_config(tmp_path, monkeypatch):
     from jobwright import cli as cli_mod
     from jobwright.config import load_config

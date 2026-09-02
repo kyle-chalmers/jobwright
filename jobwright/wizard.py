@@ -145,9 +145,18 @@ def _sniff_profile(kind: str, home: Path) -> str:
 
 
 def _sniff_jobs_dir(root: Path) -> tuple[str, list[str]]:
-    """Find a dir whose children look like <PREFIX>-<n>_<Name> job folders."""
-    candidates = ["jobs", "dags", "pipelines", "tasks"]
-    candidates += [d.name for d in root.iterdir() if d.is_dir() and not d.name.startswith(".")] if root.is_dir() else []
+    """Find the dir whose children look like <PREFIX>-<n>_<Name> job folders.
+
+    Every candidate is scored by how many job-like children it holds and the best wins:
+    a retired-jobs folder keeping one old job must not beat the twelve live ones beside
+    it. The repo root is a candidate too ("."), for repos that keep job folders at the
+    top level. Ties keep the candidate order — conventional names, then the root.
+    """
+    if not root.is_dir():
+        return "jobs", []
+    candidates = ["jobs", "dags", "pipelines", "tasks", "."]
+    candidates += [d.name for d in sorted(root.iterdir()) if d.is_dir() and not d.name.startswith(".")]
+    best: tuple[int, str, list[str]] = (0, "jobs", [])  # nothing matched -> the default
     for name in dict.fromkeys(candidates):  # ordered de-dupe
         d = root / name
         if not d.is_dir():
@@ -158,12 +167,10 @@ def _sniff_jobs_dir(root: Path) -> tuple[str, list[str]]:
             validate_relpath(name, "project.jobs_dir")
         except ConfigError:
             continue
-        prefixes = sorted(
-            {m.group(1) for child in d.iterdir() if child.is_dir() and (m := _JOB_FOLDER_RE.match(child.name))}
-        )
-        if prefixes:
-            return name, prefixes[:5]
-    return "jobs", []
+        matches = [m.group(1) for child in d.iterdir() if child.is_dir() and (m := _JOB_FOLDER_RE.match(child.name))]
+        if len(matches) > best[0]:
+            best = (len(matches), name, sorted(set(matches))[:5])
+    return best[1], best[2]
 
 
 def _sniff_job_def_dirs(root: Path, job_defs: list[Path]) -> dict[str, str]:

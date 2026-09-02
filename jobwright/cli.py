@@ -339,8 +339,12 @@ def init(
 
     (root / CONFIG_FILENAME).write_text(text)
     typer.secho(f"\nWrote {CONFIG_FILENAME}:", fg=typer.colors.GREEN)
+    jobs_where = "at the repo root" if cfg.project.jobs_dir == "." else f"in {cfg.project.jobs_dir}/"
+    typer.echo(f"  platform {cfg.platform.kind} · deploys: {cfg.platform.deploy_model} · jobs {jobs_where}")
+    # both values come from THIS machine's CLI setup, yet they land in a committed file
     typer.echo(
-        f"  platform {cfg.platform.kind} · deploys: {cfg.platform.deploy_model} · jobs in {cfg.project.jobs_dir}/"
+        f"  profile: {cfg.platform.profile or '(none)'} · warehouse: {cfg.warehouse.dialect} "
+        "— detected on this machine; confirm they match your team's convention."
     )
     typer.echo(
         "  Commented defaults inside cover the rest (ticket links, governance fields, exceptions) — edit anytime."
