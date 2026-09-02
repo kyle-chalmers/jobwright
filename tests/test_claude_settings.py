@@ -103,6 +103,51 @@ def test_a_marketplace_pointing_elsewhere_is_a_conflict(tmp_path):
     assert _settings(root)["extraKnownMarketplaces"]["jobwright"]["source"]["repo"] == "kyle-chalmers/jobwright"
 
 
+@pytest.mark.parametrize(
+    ("entry", "shape"),
+    [
+        pytest.param(None, "null", id="null"),
+        pytest.param("someone/fork", "string", id="string"),
+        pytest.param(["someone/fork"], "array", id="array"),
+        pytest.param({"autoUpdate": True}, 'no "source"', id="object-without-source"),
+        pytest.param({"source": "someone/fork"}, '"source" is a string', id="source-not-an-object"),
+    ],
+)
+def test_a_malformed_marketplace_entry_is_a_conflict_until_forced(tmp_path, entry, shape):
+    """A key that is present but unusable is not the same as an absent key. `dict.get` read
+    `"jobwright": null` as absent and overwrote it silently; the other shapes were reported
+    as "pointing somewhere else" when they point nowhere at all."""
+    root = _repo(tmp_path)
+    (root / ".claude").mkdir()
+    (root / SETTINGS_REL).write_text(json.dumps({"extraKnownMarketplaces": {"jobwright": entry}}))
+    before = (root / SETTINGS_REL).read_bytes()
+
+    with pytest.raises(SettingsError, match="present but malformed") as excinfo:
+        configure(root)
+    assert shape in str(excinfo.value)
+    assert "--force" in str(excinfo.value)
+    assert (root / SETTINGS_REL).read_bytes() == before  # nothing written on a conflict
+
+    res = configure(root, force=True)
+    assert res.changed is True
+    doc = _settings(root)
+    assert doc["extraKnownMarketplaces"]["jobwright"] == {
+        "source": {"source": "github", "repo": "kyle-chalmers/jobwright"},
+        "autoUpdate": True,
+    }
+    assert doc["enabledPlugins"]["jobwright@jobwright"] is True
+
+
+def test_an_absent_marketplace_key_is_still_written_without_force(tmp_path):
+    """The membership check must not turn the ordinary first-run case into a conflict."""
+    root = _repo(tmp_path)
+    (root / ".claude").mkdir()
+    (root / SETTINGS_REL).write_text(json.dumps({"extraKnownMarketplaces": {}}))
+    res = configure(root)
+    assert res.changed is True
+    assert _settings(root)["extraKnownMarketplaces"]["jobwright"]["autoUpdate"] is True
+
+
 def _same_source_entry(**extra) -> dict:
     """A marketplace entry pointing at the real repo, as `claude plugin marketplace add`
     writes it: source only, no autoUpdate. `extra` adds keys the user may have set."""

@@ -111,6 +111,39 @@ def _preflight(path: Path) -> dict:
     return doc
 
 
+def _json_type(value: object) -> str:
+    """Name a parsed value in JSON terms, article included, so it drops into a sentence.
+
+    The user edits this file as JSON, so messages say "array", not "list".
+    """
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "a boolean"
+    if isinstance(value, (int, float)):
+        return "a number"
+    if isinstance(value, str):
+        return "a string"
+    if isinstance(value, list):
+        return "an array"
+    return "an object"
+
+
+def _malformed_shape(entry: object) -> str | None:
+    """Describe why a marketplace entry is unusable, or None when it has the expected shape.
+
+    The expected shape is an object with an object-valued `source`. Anything else cannot be
+    compared against ours, so it is neither "ours" nor "pointing somewhere else".
+    """
+    if not isinstance(entry, dict):
+        return _json_type(entry)
+    if "source" not in entry:
+        return 'an object with no "source"'
+    if not isinstance(entry["source"], dict):
+        return f'an object whose "source" is {_json_type(entry["source"])}'
+    return None
+
+
 def _merge(doc: dict, repo: str, force: bool) -> tuple[dict, list[str], list[str]]:
     """Return the merged document, any conflicts found, and notes for the result message.
 
@@ -123,10 +156,22 @@ def _merge(doc: dict, repo: str, force: bool) -> tuple[dict, list[str], list[str
     notes: list[str] = []
 
     markets = merged.setdefault("extraKnownMarketplaces", {})
+    # Membership, not `.get()`: `"jobwright": null` is a present-but-broken entry, and `.get()`
+    # read it as absent and overwrote it without --force.
+    present = MARKETPLACE_NAME in markets
     existing = markets.get(MARKETPLACE_NAME)
-    if existing is None:
+    shape = _malformed_shape(existing) if present else None
+    if not present:
         markets[MARKETPLACE_NAME] = marketplace
-    elif not isinstance(existing, dict) or existing.get("source") != marketplace["source"]:
+    elif shape is not None:
+        if force:
+            markets[MARKETPLACE_NAME] = marketplace
+        else:
+            conflicts.append(
+                f"extraKnownMarketplaces.{MARKETPLACE_NAME} is present but malformed ({shape}). "
+                "Leaving it. Re-run with --force to replace it."
+            )
+    elif existing["source"] != marketplace["source"]:
         if force:
             markets[MARKETPLACE_NAME] = marketplace
         else:
