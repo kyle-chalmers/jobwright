@@ -205,8 +205,9 @@ if that file is already gone, `plugin uninstall` has no project-scoped install l
 its entry in `~/.claude/plugins/installed_plugins.json` stays behind as an orphan.
 
 If you ran `jobwright install-precommit`, also delete the hook it wrote: `pre-commit` in the
-repo's git hooks dir (`.git/hooks/`, or `core.hooksPath` if set), recognizable by its
-`# jobwright-managed pre-commit v1` marker.
+repo's git hooks dir — `core.hooksPath` if set, otherwise `$(git rev-parse --git-common-dir)/hooks`,
+which is `.git/hooks/` in the main worktree and the main repo's `.git/hooks/` when run from a
+linked worktree — recognizable by its `# jobwright-managed pre-commit v1` marker.
 
 ## Status
 

@@ -26,22 +26,56 @@ that adoption showed were missing.
   repo and doctor still printed all green while drift detection and the job-def checks had
   nothing to scan. The message names the env and path.
 - **`check syntax|job-defs|deps` accept directories**, matching `check architecture`. A
-  directory expands (non-recursive, sorted) to the files that check handles; one holding none
+  directory expands (recursive, sorted, skipping dot-dirs and `__pycache__`) to the files that
+  check handles — with the jobs dir at the repo root the notebooks sit one level down, so
+  `check syntax .` has to descend the way `check architecture .` already did; one holding none
   exits 1 with `no <ext> files in <dir>` instead of `[Errno 21] Is a directory`.
+- **The catalog hooks scope themselves to job folders when `jobs_dir` is the repo root.** With
+  `jobs_dir: "."` every path is "under" the jobs dir, so the installed pre-commit hook
+  regenerated and staged the catalog on every commit (a README-only commit picked up `JOBS.md`)
+  and the PostToolUse rebuild fired on every Write/Edit in the repo. Both now require the first
+  path segment to be a job folder (`JOB-12`, `JOB-12_Name`, `JOB-12-name`; not `archive-JOB-12`),
+  using the configured `key_prefixes` and falling back to the generic shape when the list is not
+  inline. Non-root layouts are unchanged.
+- **`jobs-index`, its skip report and `init` agree on what a job folder is.** The index decided
+  with a substring search, so `archive-JOB-12` was catalogued as `JOB-12` while the Skipped line
+  promised a `JOB-123_Name` shape, and the wizard used a third, underscore-requiring pattern. One
+  predicate now decides everywhere: the key must start the name and be followed by the end or a
+  non-alphanumeric separator. The skip report also excludes `graph/` and `objects/` only while
+  `graph_notes` is on — with it off, a real folder by either name is reported like any other.
+- **Adapters resolve `job_def_dirs` / `dags_dir` from the directory holding the config**, not
+  the process cwd. `doctor` already validated those paths against the config root, so
+  `cd <job folder> && jobwright doctor` was green while `diff-job` in the same shell found no
+  repo definition. All four adapters share the one fix.
+- **`configure-claude` / `init` treat a malformed marketplace entry as a conflict.** A
+  present-but-null `extraKnownMarketplaces.jobwright`, a non-object entry, or an object without
+  an object-valued `source` read as absent, so null was overwritten silently without `--force`
+  and the other shapes were reported as "pointing somewhere else" when they point nowhere. They
+  now report as `present but malformed (<shape>)`; `--force` replaces them, and an absent key is
+  still written without `--force`.
+- **Objects referenced through Python string literals are indexed.** Extraction was
+  keyword-anchored (`FROM`/`JOIN`/`INTO`/…), so a fully-qualified name carried in a plain string
+  — the Spark-connector `.option("dbtable", "DB.SCHEMA.TABLE")` shape — never matched, and
+  PySpark jobs landed in `OBJECTS.md` with zero objects. In `.py` files a string literal whose
+  whole content is `IDENT.IDENT.IDENT` with at least one uppercase letter now counts, so module
+  paths and dotted version strings stay out. Names assembled at runtime (variables, f-strings)
+  remain out of reach.
 
 ### Changed
 - **`jobs-index` names the folders it skipped.** Folders in `jobs_dir` whose names carry no
   ticket key were left out of the catalog with no sign they existed. The command now prints
-  `Skipped N folder(s) not named like <PREFIX>-123_Name: …` after the success line (the
-  generated graph dirs, dot-dirs and `__pycache__` are expected there and not reported). The
-  rendered files are unchanged, so determinism and `--check` hold; the build-jobs-index skill
-  tells the agent to rename or move those folders rather than leave real jobs uncatalogued.
+  `Skipped N folder(s) not named like JOB-123_Name or DAG-123_Name: …` after the success line,
+  naming every configured prefix (dot-dirs, `__pycache__`, and — while `graph_notes` is on —
+  the generated graph dirs are expected there and not reported). The rendered files are
+  unchanged, so determinism and `--check` hold; the build-jobs-index skill tells the agent to
+  rename or move those folders rather than leave real jobs uncatalogued.
 - **The no-config hint reads "run /setup in Claude Code, or `jobwright init` from a shell."**
   everywhere it appears (doctor, every command that loads config, `load_config`), so plugin
   users who never open a terminal get a path that works for them.
 - **`init` summary** says "jobs at the repo root" for `jobs_dir: "."` instead of "jobs in ./",
-  and flags that `platform.profile` and `warehouse.dialect` were detected on this machine yet
-  land in a committed file — confirm them against the team's convention.
+  and asks you to confirm that `platform.profile` and `warehouse.dialect` — which land in a
+  committed file — match your team's convention. It no longer claims they were "detected on
+  this machine", which was false for a user who typed them at the prompt.
 
 ### Docs
 - **README: Uninstall section.** The two `claude plugin` commands first, then the config and
@@ -53,8 +87,17 @@ that adoption showed were missing.
   commands write (no `autoUpdate`); `/setup` adds it and merges into the existing entry.
   `marketplace add` on a machine that already knows the marketplace just declares it in project
   settings — expected, not an error. `init --yes` for CI, scripts, and agents. Root-level job
-  folders use `jobs_dir: "."`, the catalog then lands at the root, and `graph_notes: false`
-  skips the two graph directories.
+  folders use `jobs_dir: "."`, the catalog then lands at the root, the hooks that keep it fresh
+  react only to edits and commits inside job folders, and `graph_notes: false` skips the two
+  graph directories.
+- **README: how objects are found.** The graph section states the extraction rules —
+  `FROM`/`JOIN`/`INTO`-style refs in SQL and Python SQL strings, plus whole-string
+  `DB.SCHEMA.TABLE` literals in `.py` files — and that a name assembled at runtime from
+  variables or an f-string is not indexed.
+- **README: exact pre-commit hook location.** The Uninstall section names where
+  `install-precommit` writes the hook the way the code resolves it: `core.hooksPath` if set,
+  otherwise `$(git rev-parse --git-common-dir)/hooks` — `.git/hooks/` in the main worktree,
+  the main repo's `.git/hooks/` from a linked worktree.
 - **Databricks adapter: the `git_source` gap.** api-reset assumes the repo JSON *is* the job
   definition. Jobs whose tasks pin a `git_source` keep no repo-side JSON, so `diff-job` and
   `validate-job` report it missing, and the drift that matters for them — pinned commit vs
