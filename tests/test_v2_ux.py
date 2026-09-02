@@ -218,12 +218,16 @@ def test_wizard_and_catalog_agree_on_what_a_job_folder_is(tmp_path):
 
 
 def test_cli_init_yes_root_layout_summary(tmp_path, monkeypatch):
+    from jobwright import wizard
     from jobwright.cli import app
     from jobwright.config import load_config
 
     for n in range(3):
         (tmp_path / f"JOB-{n}_Job_{n}").mkdir()
     monkeypatch.chdir(tmp_path)
+    # pin detection so the summary lines asserted below don't depend on this machine's CLIs
+    monkeypatch.setattr(wizard, "_sniff_platform", lambda *a: ("databricks", ["test fixture"]))
+    monkeypatch.setattr(wizard, "_sniff_profile", lambda kind, home: "mine")
     result = CliRunner().invoke(app, ["init", "--yes"])
     assert result.exit_code == 0, result.output
     cfg = load_config(tmp_path / "jobwright.config.yaml")

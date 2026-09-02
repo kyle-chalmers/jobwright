@@ -448,6 +448,9 @@ def test_init_writes_the_profile_to_the_local_file_and_gitignores_it(tmp_path, m
     from jobwright.cli import app
     (tmp_path / "JOB-1_A").mkdir()
     monkeypatch.chdir(tmp_path)
+    # pin detection: a profile is only sniffed once a platform is found, and the repo alone
+    # carries no platform signal — without this the test depends on the developer's machine
+    monkeypatch.setattr(wizard, "_sniff_platform", lambda *a: ("databricks", ["test fixture"]))
     monkeypatch.setattr(wizard, "_sniff_profile", lambda kind, home: "mine")
     r = CliRunner().invoke(app, ["init", "--yes", "--no-claude-settings"])
     assert r.exit_code == 0, r.output
