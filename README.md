@@ -125,7 +125,10 @@ Alongside `JOBS.md` / `OBJECTS.md`, jobwright writes a small, auto-maintained gr
 `<jobs_dir>/` — `graph/<ticket>.md` (a node per job) and `objects/<object>.md` (a node per data
 object) — so you can open the repo as an [Obsidian](https://obsidian.md) vault and *browse* your
 jobs. Open a table like `ANALYTICS.VW_CUSTOMER` and its local graph is every job still on it;
-open a job and you see the objects it touches plus its deprecated-schema flags. Because objects are
+open a job and you see the objects it touches plus its deprecated-schema flags. Objects are found
+by regex — `FROM`/`JOIN`/`INTO`-style refs in SQL and Python SQL strings, plus whole-string
+`DB.SCHEMA.TABLE` literals in `.py` files (the Spark `.option("dbtable", ...)` shape) — so a name
+assembled at runtime from variables or an f-string is not indexed. Because objects are
 the hubs, **jobs cluster around the schemas they share — a deprecated schema shows every job that
 still depends on it, i.e. a live migration map.** Point Obsidian at the repo (or `<jobs_dir>/`), open
 Graph view, and for the cleanest picture filter `-JOBS -OBJECTS -README -AGENTS -CLAUDE` and add a

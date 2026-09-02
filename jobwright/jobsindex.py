@@ -35,6 +35,15 @@ STATUS_ORDER = ["ACTIVE", "TESTING", "DEPRECATED", "Unknown"]
 SQL_OBJECT = re.compile(
     r"(?i)\b(?:from|join|into|update|table|view)\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w+){1,2})"
 )
+# A fully-qualified name carried in a Python string literal — the Spark-connector
+# `.option("dbtable", "DB.SCHEMA.TABLE")` shape, or a quoted name passed around — has no
+# SQL keyword for SQL_OBJECT to anchor on. Whole-literal `IDENT.IDENT.IDENT` with at least
+# one uppercase letter (the lookahead), so module paths like "os.path.join" and dotted
+# version strings stay out. Names assembled at runtime (variables, f-strings with braces)
+# are out of reach by design.
+PY_QUOTED_OBJECT = re.compile(
+    r"""(['"])(?=[^'"]*[A-Z])([A-Za-z_]\w*(?:\.[A-Za-z_]\w*){2})\1"""
+)
 PY_IMPORT = re.compile(r"^\s*(?:from\s+\S+\s+import\b|import\s)")
 # Trailing line comment (Python `#`, SQL `--`). Stripped before extraction so
 # commented-out code never registers as a live object reference — e.g. a disabled
@@ -198,6 +207,9 @@ def extract_objects(job_dir: Path, cap: int = 40) -> list[str]:
                     continue
                 for name in SQL_OBJECT.findall(line):
                     found.setdefault(name.lower(), name)
+                if f.suffix == ".py":
+                    for _quote, name in PY_QUOTED_OBJECT.findall(line):
+                        found.setdefault(name.lower(), name)
     return sorted(found.values(), key=str.lower)[:cap]
 
 
