@@ -70,9 +70,10 @@ databricks jobs get-run-output <run_id> -o json --profile <p>
 - Repo JSONs are the *unwrapped* settings (top-level `name`, `schedule`, `tasks`); the API returns them under `settings`.
 - Repo JSONs have **no** `job_id`; jobwright resolves the live job by matching `name`.
 - A `run-now` timeout does **not** mean the run failed to start — check `list-runs --active-only` before retrying.
-- **api-reset assumes the repo JSON *is* the job definition.** Jobs whose tasks pin a
-  `git_source` (repo URL + branch or commit) keep no repo-side JSON, so `diff-job` reports
-  `no repo job definition found` and `validate-job` flags the missing JSON. The drift that
-  matters for those jobs — the pinned commit vs the repo's HEAD — is not yet surfaced. Treat it
-  as a known gap: check the pinned ref with `databricks jobs get <job_id> -o json --profile <p>`
-  and read `settings.git_source` before assuming merged code is live.
+- **api-reset assumes every job has a repo-side JSON.** A job that was defined only in the
+  workspace (common for git-backed jobs created in the UI) has none, so `diff-job` reports
+  `no repo job definition found` and `validate-job` flags the missing JSON. `git_source` itself
+  is a job-level settings field and diffs like any other once the JSON exists. Fix it once:
+  export the live definition (`databricks jobs get <job_id> -o json --profile <p>`, keep
+  `settings`) into your `job_def_dirs`; from then on drift detection covers that job — pinned
+  commit included — and a merge to the default branch stops looking like a deploy.

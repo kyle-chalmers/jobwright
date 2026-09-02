@@ -84,7 +84,8 @@ that adoption showed were missing.
   settings file first leaves an orphan entry in `~/.claude/plugins/installed_plugins.json`.
   Also the pre-commit hook, if `install-precommit` was run.
 - **README: install-path accuracy.** The settings JSON shown now matches what the two CLI
-  commands write (no `autoUpdate`); `/setup` adds it and merges into the existing entry.
+  commands write (no `autoUpdate`); a fresh `jobwright init` or `jobwright configure-claude` adds it,
+  merging into the existing entry.
   `marketplace add` on a machine that already knows the marketplace just declares it in project
   settings — expected, not an error. `init --yes` for CI, scripts, and agents. Root-level job
   folders use `jobs_dir: "."`, the catalog then lands at the root, the hooks that keep it fresh
@@ -98,11 +99,11 @@ that adoption showed were missing.
   `install-precommit` writes the hook the way the code resolves it: `core.hooksPath` if set,
   otherwise `$(git rev-parse --git-common-dir)/hooks` — `.git/hooks/` in the main worktree,
   the main repo's `.git/hooks/` from a linked worktree.
-- **Databricks adapter: the `git_source` gap.** api-reset assumes the repo JSON *is* the job
-  definition. Jobs whose tasks pin a `git_source` keep no repo-side JSON, so `diff-job` and
-  `validate-job` report it missing, and the drift that matters for them — pinned commit vs
-  repo HEAD — is not yet surfaced. Check `settings.git_source` with the platform CLI before
-  assuming merged code is live.
+- **Databricks adapter: jobs with no repo-side JSON.** api-reset assumes each job has a
+  definition file in `job_def_dirs`; a job defined only in the workspace (typical for
+  git-backed jobs created in the UI) has none, so `diff-job`/`validate-job` report it. The
+  adapter doc now says how to fix that once — export the live definition into `job_def_dirs` —
+  after which drift detection covers the job, `git_source` included.
 
 ## [0.3.0] — 2026-08-31
 
