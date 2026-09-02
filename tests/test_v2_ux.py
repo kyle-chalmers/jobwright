@@ -229,9 +229,9 @@ def test_cli_init_yes_root_layout_summary(tmp_path, monkeypatch):
     cfg = load_config(tmp_path / "jobwright.config.yaml")
     assert cfg.project.jobs_dir == "." and cross_validate(cfg) == []
     assert "jobs at the repo root" in result.output  # not the awkward "jobs in ./"
-    # profile + dialect land in a committed file whether detected or typed at the prompt —
-    # say so without claiming to know which
-    assert "confirm these committed settings match your team's convention" in result.output
+    # the profile is per-user (local file, gitignored); the dialect is committed and flagged as such
+    assert "gitignored" in result.output
+    assert "committed; confirm it matches your team's convention" in result.output
 
 
 def test_cli_init_interactive_reprompts_and_writes_valid_config(tmp_path, monkeypatch):

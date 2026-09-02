@@ -302,12 +302,15 @@ def test_hook_uses_an_explicit_jobwright_bin_when_path_has_none(tmp_path):
     bare = "/usr/bin:/bin"
     assert shutil.which("jobwright", path=bare) is None, "precondition: jobwright unreachable"
 
-    real = shutil.which("jobwright")
-    assert real, "precondition: a jobwright exists in the test environment"
+    # a real CLI the hook can be pointed at, independent of whatever `jobwright` PATH resolves to on
+    # this machine (a pip install, a forwarding shim, or nothing)
+    real = tmp_path / "jobwright-real"
+    real.write_text(f"#!/bin/sh\nexec {sys.executable} -m jobwright.cli \"$@\"\n")
+    real.chmod(0o755)
     proc = subprocess.run(
         ["sh", str(_hook(repo))],
         cwd=str(repo), capture_output=True, text=True, timeout=120,
-        env={**os.environ, "PATH": bare, "JOBWRIGHT_BIN": real},
+        env={**os.environ, "PATH": bare, "JOBWRIGHT_BIN": str(real)},
     )
     assert proc.returncode == 0
     assert "no CLI available" not in proc.stderr, "JOBWRIGHT_BIN should have been used"
@@ -329,3 +332,18 @@ def test_hook_template_is_posix_sh_not_bash():
         pytest.skip("no dash/ash available to check POSIX conformance")
     res = subprocess.run([shell, "-n", str(template)], capture_output=True, text=True)
     assert res.returncode == 0, f"not valid POSIX sh:\n{res.stderr}"
+
+
+def test_launcher_ignores_a_jobwright_bin_that_forwards_to_itself(tmp_path):
+    """JOBWRIGHT_BIN pointing back at the launcher (directly, or via a shim that execs it) used to
+    recurse forever; the launcher must notice and fall through instead."""
+    launcher = REPO / "bin" / "jobwright-plugin"
+    shim = tmp_path / "jobwright"
+    shim.write_text(f'#!/bin/sh\nexec "{launcher}" "$@"\n')
+    shim.chmod(0o755)
+    proc = subprocess.run(
+        ["bash", str(launcher), "version"], capture_output=True, text=True, timeout=60,
+        env={**os.environ, "JOBWRIGHT_BIN": str(shim)},
+    )
+    assert "forwards back to this launcher" in proc.stderr
+    assert proc.returncode in (0, 127)  # falls through to uvx/pipx (0) or reports none available (127)

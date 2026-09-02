@@ -5,4 +5,4 @@ Intentionally import-light: this module is imported by the stdlib-only
 it must not pull in ``yaml`` / ``typer`` / other heavy deps at import time.
 """
 
-__version__ = "0.3.2"
+__version__ = "0.4.0"

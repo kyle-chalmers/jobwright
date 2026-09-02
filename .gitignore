@@ -31,3 +31,4 @@ venv/
 
 # multi-AI review working artifacts (local only)
 .ai-friend-review/
+jobwright.config.local.yaml

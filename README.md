@@ -60,6 +60,11 @@ or `pipx`, which the plugin uses to run its CLI on demand. Nothing to `pip insta
 
 ## First run
 
+Two files come out of `/setup`: `jobwright.config.yaml`, the team's config (commit it), and
+`jobwright.config.local.yaml`, yours alone — it holds your CLI profile name and is gitignored, because
+every machine names its profiles differently. The local file may set only per-user keys; anything
+else there is rejected so team config cannot drift into a file nobody reviews.
+
 In that repo:
 
 ```
@@ -196,7 +201,7 @@ claude plugin uninstall jobwright@jobwright --scope project
 claude plugin marketplace remove jobwright --scope project
 ```
 
-Then delete `jobwright.config.yaml` and the generated catalog under `<jobs_dir>/` — `JOBS.md`,
+Then delete `jobwright.config.yaml` and `jobwright.config.local.yaml` and the generated catalog under `<jobs_dir>/` — `JOBS.md`,
 `OBJECTS.md`, `index_data.json` if present, and the `graph/` and `objects/` directories. Last,
 remove the two jobwright keys from `.claude/settings.json` — `extraKnownMarketplaces.jobwright`
 and `enabledPlugins."jobwright@jobwright"` — or the file itself, if jobwright was all it held.

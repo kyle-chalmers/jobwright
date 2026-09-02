@@ -6,7 +6,7 @@ deploy_model: api-reset
 requires: [profile]
 auth: |
   Databricks CLI profile in ~/.databrickscfg (host + token), selected by
-  `platform.profile` in jobwright.config.yaml. Verify: `databricks jobs list --profile <p>`.
+  `platform.profile` in jobwright.config.local.yaml (per-user, gitignored; a team default may sit in jobwright.config.yaml). Verify: `databricks jobs list --profile <p>`.
   jobwright never stores the token — only the profile NAME.
 destructive_patterns:
   # MUST stay in sync with DatabricksAdapter.destructive_patterns (jobwright/platforms/databricks.py).
