@@ -15,7 +15,7 @@ from pathlib import Path
 import typer
 
 from . import __version__
-from .config import CONFIG_FILENAME, ConfigError, find_config, load_config
+from .config import CONFIG_FILENAME, SETUP_HINT, ConfigError, find_config, load_config
 
 app = typer.Typer(
     add_completion=False,
@@ -36,7 +36,7 @@ def _load():
     cfg_path = find_config()
     if cfg_path is None:
         typer.secho(
-            f"No {CONFIG_FILENAME} found (searched cwd and parents). Run `jobwright init`.",
+            f"No {CONFIG_FILENAME} found (searched cwd and parents) — {SETUP_HINT}",
             fg=typer.colors.RED,
         )
         raise typer.Exit(2)
@@ -71,7 +71,7 @@ def doctor() -> None:
     """Check config + environment: platform, profile, CLI availability, adapter."""
     cfg_path = find_config()
     if cfg_path is None:
-        typer.secho(f"✗ no {CONFIG_FILENAME} found — run `jobwright init`.", fg=typer.colors.RED)
+        typer.secho(f"✗ no {CONFIG_FILENAME} found — {SETUP_HINT}", fg=typer.colors.RED)
         raise typer.Exit(1)
     typer.secho(f"✓ config: {cfg_path}", fg=typer.colors.GREEN)
     try:
@@ -99,6 +99,20 @@ def doctor() -> None:
     for err in cross_validate(cfg):
         typer.secho(f"✗ {err}", fg=typer.colors.RED)
         ok = False
+
+    # cross_validate only proves the keys agree with each other. A path that agrees but
+    # points nowhere (the wizard's fallback when nothing was detected) would otherwise
+    # pass, and every downstream scan would quietly find zero files.
+    if cfg.platform.deploy_model in ("api-reset", "sql-ddl"):
+        for env, rel in cfg.platform.job_def_dirs.items():
+            if not (cfg_path.parent / rel).is_dir():
+                typer.secho(
+                    f"✗ platform.job_def_dirs.{env} = {rel} does not exist — drift detection and "
+                    "job-def checks have nothing to scan; point it at the directory holding your "
+                    "job-definition files (or remove that env).",
+                    fg=typer.colors.RED,
+                )
+                ok = False
 
     try:
         from .platforms import adapter_kinds, get_adapter_class
@@ -518,6 +532,27 @@ check_app = typer.Typer(no_args_is_help=True, help="Run a single generic check (
 app.add_typer(check_app, name="check")
 
 
+def _expand_dirs(paths: list[str], ext: str) -> list[str]:
+    """Let a check take a directory, as `check architecture` does.
+
+    A directory expands (non-recursive, sorted) to the files this check handles; one that
+    holds none is an error, not a silent pass. Anything else passes through untouched, so
+    the tool still reports a missing or unreadable file itself.
+    """
+    out: list[str] = []
+    for raw in paths:
+        p = Path(raw)
+        if not p.is_dir():
+            out.append(raw)
+            continue
+        found = sorted(str(f) for f in p.glob(f"*{ext}") if f.is_file())
+        if not found:
+            typer.secho(f"no {ext} files in {raw}", fg=typer.colors.RED, err=True)
+            raise typer.Exit(1)
+        out.extend(found)
+    return out
+
+
 @check_app.command("architecture")
 def check_architecture(
     paths: list[str] = typer.Argument(..., help="files or dirs to scan"),
@@ -541,27 +576,27 @@ def check_docs(
 
 
 @check_app.command("syntax")
-def check_syntax(files: list[str] = typer.Argument(..., help="notebook .py files")) -> None:
+def check_syntax(files: list[str] = typer.Argument(..., help="notebook .py files, or directories of them")) -> None:
     """Magic-aware Python syntax check."""
     from .tools import check_notebook_syntax
 
-    raise typer.Exit(check_notebook_syntax.main(files))
+    raise typer.Exit(check_notebook_syntax.main(_expand_dirs(files, ".py")))
 
 
 @check_app.command("job-defs")
-def check_job_defs(files: list[str] = typer.Argument(..., help="job-definition JSON files")) -> None:
+def check_job_defs(files: list[str] = typer.Argument(..., help="job-definition JSON files, or directories of them")) -> None:
     """Validate job-definition JSON (parse + name presence in deployable dirs)."""
     from .tools import validate_job_definitions
 
-    raise typer.Exit(validate_job_definitions.main(files))
+    raise typer.Exit(validate_job_definitions.main(_expand_dirs(files, ".json")))
 
 
 @check_app.command("deps")
-def check_deps(files: list[str] = typer.Argument(..., help="notebook .py files with %pip install pins")) -> None:
+def check_deps(files: list[str] = typer.Argument(..., help="notebook .py files with %pip install pins, or directories of them")) -> None:
     """OSV vulnerability lookup on pinned %pip install packages."""
     from .tools import check_dependency_vulns
 
-    raise typer.Exit(check_dependency_vulns.main(files))
+    raise typer.Exit(check_dependency_vulns.main(_expand_dirs(files, ".py")))
 
 
 @app.command("validate-job")
