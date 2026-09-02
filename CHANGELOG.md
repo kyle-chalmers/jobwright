@@ -3,6 +3,64 @@
 All notable changes to jobwright are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions follow semver.
 
+## [0.3.1] — 2026-09-01
+
+Fixes from adopting jobwright on a repo whose job folders live at the repo root, plus the docs
+that adoption showed were missing.
+
+### Fixed
+- **`init` detects job folders at the repo root.** Detection only ever tested subdirectories
+  and took the first one with any match, so a retired-jobs folder holding a single old job beat
+  a dozen live jobs beside it, and the root was never considered. Every candidate — the
+  conventional names, the repo root (`"."`), and each top-level directory — is now scored by how
+  many job-like children it holds, and the best wins; ties keep the old order.
+- **`configure-claude` / `init` merge `autoUpdate` into a same-source marketplace entry**
+  instead of reporting "already points somewhere else". `claude plugin marketplace add` writes
+  the entry with only its `source`, so the documented install path read as a conflict and
+  `autoUpdate` was unreachable through it. Only the `source` decides ownership now: a missing
+  `autoUpdate` is filled in, other keys are kept, and an explicit `autoUpdate: false` is
+  respected (noted in the result; `--force` turns it on). Different-source conflicts behave as
+  before.
+- **`doctor` fails when a `platform.job_def_dirs` entry does not exist** (api-reset / sql-ddl,
+  where those dirs are read). `init --yes` could fall back to default paths absent from the
+  repo and doctor still printed all green while drift detection and the job-def checks had
+  nothing to scan. The message names the env and path.
+- **`check syntax|job-defs|deps` accept directories**, matching `check architecture`. A
+  directory expands (non-recursive, sorted) to the files that check handles; one holding none
+  exits 1 with `no <ext> files in <dir>` instead of `[Errno 21] Is a directory`.
+
+### Changed
+- **`jobs-index` names the folders it skipped.** Folders in `jobs_dir` whose names carry no
+  ticket key were left out of the catalog with no sign they existed. The command now prints
+  `Skipped N folder(s) not named like <PREFIX>-123_Name: …` after the success line (the
+  generated graph dirs, dot-dirs and `__pycache__` are expected there and not reported). The
+  rendered files are unchanged, so determinism and `--check` hold; the build-jobs-index skill
+  tells the agent to rename or move those folders rather than leave real jobs uncatalogued.
+- **The no-config hint reads "run /setup in Claude Code, or `jobwright init` from a shell."**
+  everywhere it appears (doctor, every command that loads config, `load_config`), so plugin
+  users who never open a terminal get a path that works for them.
+- **`init` summary** says "jobs at the repo root" for `jobs_dir: "."` instead of "jobs in ./",
+  and flags that `platform.profile` and `warehouse.dialect` were detected on this machine yet
+  land in a committed file — confirm them against the team's convention.
+
+### Docs
+- **README: Uninstall section.** The two `claude plugin` commands first, then the config and
+  generated catalog (`JOBS.md`, `OBJECTS.md`, `index_data.json` if present, `graph/`,
+  `objects/`), then the two keys in `.claude/settings.json` — and why that order: deleting the
+  settings file first leaves an orphan entry in `~/.claude/plugins/installed_plugins.json`.
+  Also the pre-commit hook, if `install-precommit` was run.
+- **README: install-path accuracy.** The settings JSON shown now matches what the two CLI
+  commands write (no `autoUpdate`); `/setup` adds it and merges into the existing entry.
+  `marketplace add` on a machine that already knows the marketplace just declares it in project
+  settings — expected, not an error. `init --yes` for CI, scripts, and agents. Root-level job
+  folders use `jobs_dir: "."`, the catalog then lands at the root, and `graph_notes: false`
+  skips the two graph directories.
+- **Databricks adapter: the `git_source` gap.** api-reset assumes the repo JSON *is* the job
+  definition. Jobs whose tasks pin a `git_source` keep no repo-side JSON, so `diff-job` and
+  `validate-job` report it missing, and the drift that matters for them — pinned commit vs
+  repo HEAD — is not yet surfaced. Check `settings.git_source` with the platform CLI before
+  assuming merged code is live.
+
 ## [0.3.0] — 2026-08-31
 
 ### Removed

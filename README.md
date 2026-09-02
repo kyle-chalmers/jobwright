@@ -31,16 +31,19 @@ with the repo:
 {
   "extraKnownMarketplaces": {
     "jobwright": {
-      "source": { "source": "github", "repo": "kyle-chalmers/jobwright" },
-      "autoUpdate": true
+      "source": { "source": "github", "repo": "kyle-chalmers/jobwright" }
     }
   },
   "enabledPlugins": { "jobwright@jobwright": true }
 }
 ```
 
-`/setup` writes and commits that file for you, including the `autoUpdate` key — no CLI
-flag sets that one. Two things worth knowing about it:
+The CLI stops there — no flag sets `autoUpdate`. `/setup` (`jobwright init`, or
+`jobwright configure-claude` on its own) adds `"autoUpdate": true` to that entry, merging
+into the one the CLI wrote rather than treating it as a conflict. If your machine already
+knows a marketplace named `jobwright`, `marketplace add` just declares it in this repo's
+settings ("already on disk — declared in project settings") — expected, not an error. Two
+things worth knowing about `autoUpdate`:
 
 - **`autoUpdate` tracks the plugin's `version` string**, not tags. Bumping the version on
   `main` moves everyone on their next session, released or not.
@@ -64,7 +67,10 @@ In that repo:
 ```
 
 `/setup` detects your platform and pre-fills every answer, so a typical setup is five
-confirmations. `/start-job` then owns the lifecycle — it recalls prior work from the
+confirmations. If your job folders sit at the repo root rather than under `jobs/`, the wizard
+detects that too and proposes `jobs_dir: "."`; the catalog (`JOBS.md`, `OBJECTS.md`, `graph/`,
+`objects/`) then lands at the root. Set `project.graph_notes: false` to skip the two graph
+directories. `/start-job` then owns the lifecycle — it recalls prior work from the
 catalog, scaffolds (or resumes) the job, drafts its documentation *from the code*, gates it
 with `jobwright validate-job`, and routes to `/safe-deploy` when it's ready to ship.
 
@@ -152,6 +158,9 @@ jobwright init [--yes] [--force] | doctor | jobs-index [--check]
           configure-claude [--force] | install-precommit [--force]
 ```
 
+`init --yes` accepts the detected proposal without asking anything — for CI, scripts, and
+agents.
+
 `install-precommit` is worth running once per repo. The catalog is *derived* from the job
 folders, so a job doc that lands without its regenerated catalog leaves the committed catalog
 stale — and then every worktree branched from that commit inherits the drift, which the
@@ -170,6 +179,28 @@ pip install jobwright     # or: uvx jobwright
 jobwright jobs-index      # catalog          — no Claude Code needed
 jobwright validate-job jobs/JOB-1234_Revenue --offline
 ```
+
+## Uninstall
+
+To leave no trace, in this order:
+
+```bash
+claude plugin uninstall jobwright@jobwright --scope project
+claude plugin marketplace remove jobwright --scope project
+```
+
+Then delete `jobwright.config.yaml` and the generated catalog under `<jobs_dir>/` — `JOBS.md`,
+`OBJECTS.md`, `index_data.json` if present, and the `graph/` and `objects/` directories. Last,
+remove the two jobwright keys from `.claude/settings.json` — `extraKnownMarketplaces.jobwright`
+and `enabledPlugins."jobwright@jobwright"` — or the file itself, if jobwright was all it held.
+
+The order matters. Run the two `claude plugin` commands before touching `.claude/settings.json`:
+if that file is already gone, `plugin uninstall` has no project-scoped install left to find, and
+its entry in `~/.claude/plugins/installed_plugins.json` stays behind as an orphan.
+
+If you ran `jobwright install-precommit`, also delete the hook it wrote: `pre-commit` in the
+repo's git hooks dir (`.git/hooks/`, or `core.hooksPath` if set), recognizable by its
+`# jobwright-managed pre-commit v1` marker.
 
 ## Status
 
