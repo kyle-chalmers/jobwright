@@ -38,10 +38,10 @@ with the repo:
 }
 ```
 
-The two `claude plugin` commands do not set `autoUpdate`. A fresh (or `--force`) `jobwright init`
-adds `"autoUpdate": true` to that entry; on a repo that already has a config, run
-`jobwright configure-claude` — either merges into the entry the CLI wrote rather than treating
-it as a conflict. If your machine already
+The two `claude plugin` commands do not set `autoUpdate`. A fresh `jobwright init` — or
+`jobwright configure-claude` on a repo that already has a config — adds `"autoUpdate": true`
+when the key is absent, merging into the entry the CLI wrote rather than treating it as a
+conflict. An explicit `"autoUpdate": false` is kept; only `configure-claude --force` flips it. If your machine already
 knows a marketplace named `jobwright`, `marketplace add` just declares it in this repo's
 settings ("already on disk — declared in project settings") — expected, not an error. Two
 things worth knowing about `autoUpdate`:

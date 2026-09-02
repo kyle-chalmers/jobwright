@@ -84,8 +84,8 @@ that adoption showed were missing.
   settings file first leaves an orphan entry in `~/.claude/plugins/installed_plugins.json`.
   Also the pre-commit hook, if `install-precommit` was run.
 - **README: install-path accuracy.** The settings JSON shown now matches what the two CLI
-  commands write (no `autoUpdate`); a fresh `jobwright init` or `jobwright configure-claude` adds it,
-  merging into the existing entry.
+  commands write (no `autoUpdate`); a fresh `jobwright init` or `jobwright configure-claude` adds it
+  when absent (an explicit `false` is kept unless `configure-claude --force`), merging into the existing entry.
   `marketplace add` on a machine that already knows the marketplace just declares it in project
   settings — expected, not an error. `init --yes` for CI, scripts, and agents. Root-level job
   folders use `jobs_dir: "."`, the catalog then lands at the root, the hooks that keep it fresh

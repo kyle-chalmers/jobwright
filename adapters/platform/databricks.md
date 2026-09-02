@@ -46,7 +46,7 @@ databricks jobs get <job_id> -o json --profile <p>
 
 ## verb: diff_live_vs_repo
 **In:** ref (+ optional repo_path) · **Out:** `{drift, added, removed, changed, detail}`
-Normalizes both sides (unwraps `settings`, drops volatile keys: job_id, created_time, creator_user_name, run_as, …) then compares dotted paths.
+Normalizes both sides (unwraps `settings`, drops volatile keys: job_id, created_time, creator_user_name, …; `run_as` is kept on purpose — a changed run-as identity is real drift) then compares dotted paths.
 
 ## verb: list_active_runs
 **In:** ref · **Out:** `[{run_id, state, started}]`
