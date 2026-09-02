@@ -538,6 +538,37 @@ def gen_agents_cmd(
     typer.secho(f"Wrote {out.relative_to(root.resolve())} from jobwright.config.yaml.", fg=typer.colors.GREEN)
 
 
+@app.command("gen-readme")
+def gen_readme_cmd(
+    output: str = typer.Option("", "--output", "-o", help="output path (relative to repo root); default README.md when none exists, else README.jobwright.md"),
+    force: bool = typer.Option(False, "--force", help="overwrite an existing file at the output path"),
+) -> None:
+    """Render a short human-facing README from config. Never overwrites an existing README.md by default."""
+    from .scaffolder import render_readme_md
+
+    cfg, root = _load()
+    root_r = root.resolve()
+    if not output:
+        output = "README.md" if not (root_r / "README.md").exists() else "README.jobwright.md"
+    out = (root / output).resolve()
+    try:
+        out.relative_to(root_r)
+    except ValueError:
+        typer.secho(f"--output must stay within the repo (got {output!r}).", fg=typer.colors.RED)
+        raise typer.Exit(2) from None
+    if out.exists() and not force:
+        typer.secho(
+            f"{out.relative_to(root_r)} already exists — leaving it. Merge by hand, pick another -o, or pass --force.",
+            fg=typer.colors.YELLOW,
+        )
+        raise typer.Exit(1)
+    out.write_text(render_readme_md(cfg))
+    rel = out.relative_to(root_r)
+    typer.secho(f"Wrote {rel} from jobwright.config.yaml.", fg=typer.colors.GREEN)
+    if rel.name == "README.jobwright.md":
+        typer.echo("  A README.md already exists, so this is a sibling: merge the parts you want into README.md, then delete it.")
+
+
 check_app = typer.Typer(no_args_is_help=True, help="Run a single generic check (file-based; no platform calls).")
 app.add_typer(check_app, name="check")
 

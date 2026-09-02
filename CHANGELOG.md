@@ -3,6 +3,17 @@
 All notable changes to jobwright are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions follow semver.
 
+## [0.3.2] — 2026-09-02
+
+### Added
+- **`jobwright gen-readme` — a short human-facing README.** `/setup` documented the repo for
+  agents (`AGENTS.jobwright.md`, the catalog) but left people with whatever README they had —
+  often one line. `gen-readme` renders a sub-250-word page from `jobwright.config.yaml`: what the
+  repo is, how a job is laid out, where the catalog lives, how work moves (`/start-job` →
+  document → validate → `/safe-deploy`), and the deploy-safety rule. It writes `README.md` when
+  the repo has none and `README.jobwright.md` (a sibling to merge) when one exists; it never
+  overwrites an existing README without `--force`. `/setup` lists it as its last step.
+
 ## [0.3.1] — 2026-09-01
 
 Fixes from adopting jobwright on a repo whose job folders live at the repo root, plus the docs
