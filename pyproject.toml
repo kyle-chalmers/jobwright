@@ -75,6 +75,11 @@ include = [
   "/jobwright.config.example.yaml",
 ]
 exclude = [
+  # Deliberately malformed SKILL.md, used by the plugin-validate negative control in CI.
+  # /tests is allowlisted above, so without this the broken fixture rides along in the
+  # published sdist — where a tool globbing **/SKILL.md across an extracted tarball would
+  # find a skill that fails to parse.
+  "/tests/plugin-validate-negative",
   "**/.claude",
   "**/__pycache__",
   "**/.pytest_cache",
