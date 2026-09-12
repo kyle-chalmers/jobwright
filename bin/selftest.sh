@@ -66,7 +66,8 @@ extra="$(ls -d skills/*/ | grep -Ev '/(setup|start-job|safe-deploy|triage-failur
 [ -z "$extra" ] || { echo "FAIL: unexpected skill folder (retired leftover?): $extra"; exit 1; }
 # every skill ends by naming the next one — a skill that stops without a handoff is unfinished
 for f in skills/*/SKILL.md; do
-  grep -q '^## Next' "$f" || { echo "FAIL: $f has no '## Next' section"; exit 1; }
+  last="$(grep -E '^## ' "$f" | tail -1)"
+  [ "$last" = "## Next" ] || { echo "FAIL: $f must END with a '## Next' section (last section is '$last')"; exit 1; }
 done
 # the two mechanical UX guarantees: safe-deploy validates before deploying,
 # and the session hook announces the guard instead of leaving it invisible

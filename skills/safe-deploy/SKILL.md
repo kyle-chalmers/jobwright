@@ -45,12 +45,6 @@ The deploy-safety guard backstops you at the command level, but run the flow del
 The job validated PASS before deploying, the change is live, `jobwright diff-job <job>` shows no
 drift, and side-effects were confirmed beforehand.
 
-## Next
-
-Watch the first scheduled run land (`jobwright diff-job <job>` stays clean; the run's terminal
-state is success). A failed run → `/triage-failure <job> [run-id]`. Another ticket → `/start-job
-<ticket>`.
-
 ## System-evolution retro (always, even on a clean deploy)
 
 One question before closing: did anything go wrong or get re-done this deploy? If so, **which
@@ -60,3 +54,9 @@ the concrete fix to *that* artifact. If the gap is in jobwright itself, file it 
 plugin repo (issue or a note the user can act on) rather than patching around it locally.
 Fixing the layer, not the instance, is what compounds. (Ported from ticketwright's /ship
 Phase C.)
+
+## Next
+
+Watch the first scheduled run land (`jobwright diff-job <job>` stays clean; the run's terminal
+state is success). A failed run → `/triage-failure <job> [run-id]`. Another ticket → `/start-job
+<ticket>`.
