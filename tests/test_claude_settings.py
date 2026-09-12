@@ -67,7 +67,8 @@ def test_preserves_unrelated_keys(tmp_path):
     )
     configure(root)
     doc = _settings(root)
-    assert doc["permissions"] == {"allow": ["mcp__playwright__*"]}
+    # the CLI allow rule is appended after whatever was there; nothing is reordered or dropped
+    assert doc["permissions"] == {"allow": ["mcp__playwright__*", "Bash(jobwright:*)"]}
     assert "Stop" in doc["hooks"]
     assert doc["enabledPlugins"]["jobwright@jobwright"] is True
 
@@ -169,7 +170,7 @@ def test_same_source_without_autoupdate_is_merged_not_a_conflict(tmp_path):
     )
     res = configure(root)
     assert res.changed is True
-    assert res.message == "updated (added autoUpdate)"
+    assert res.message.startswith("updated (added autoUpdate")  # the CLI allow rule is noted alongside
     entry = _settings(root)["extraKnownMarketplaces"]["jobwright"]
     assert entry["autoUpdate"] is True
     assert entry["comment"] == "added by hand"  # other keys survive the merge

@@ -17,8 +17,10 @@ The deploy-safety guard backstops you at the command level, but run the flow del
    ```bash
    jobwright validate-job <job-folder>
    ```
-   On FAIL, stop here: fix the findings (or hand back to `/start-job`) and re-run until PASS.
-   Deploying an unvalidated job is the exact bypass this step closes.
+   On FAIL, stop here and route: a documentation-only failure on a job that predates jobwright
+   (no `claude.md` yet — common right after adoption) → `/start-job <job>` drafts the docs from
+   the code in minutes; any other failure → fix the findings, re-run until PASS. There is no
+   override. Deploying an unvalidated job is the exact bypass this step closes.
 2. **Diff live-vs-repo.**
    ```bash
    jobwright diff-job <job>
@@ -42,6 +44,12 @@ The deploy-safety guard backstops you at the command level, but run the flow del
 
 The job validated PASS before deploying, the change is live, `jobwright diff-job <job>` shows no
 drift, and side-effects were confirmed beforehand.
+
+## Next
+
+Watch the first scheduled run land (`jobwright diff-job <job>` stays clean; the run's terminal
+state is success). A failed run → `/triage-failure <job> [run-id]`. Another ticket → `/start-job
+<ticket>`.
 
 ## System-evolution retro (always, even on a clean deploy)
 

@@ -28,6 +28,10 @@ from pathlib import Path
 MARKETPLACE_NAME = "jobwright"
 PLUGIN_REF = "jobwright@jobwright"
 DEFAULT_REPO = "kyle-chalmers/jobwright"
+# The skills shell out to `jobwright <verb>` on every step. Without this rule each call is a
+# permission prompt — the prompt fatigue that once made an adopter ask to drop the CLI. It
+# is a project-level rule so the whole team gets it, and it only ever names our own CLI.
+CLI_PERMISSION = "Bash(jobwright:*)"
 
 SETTINGS_REL = Path(".claude") / "settings.json"
 
@@ -103,12 +107,30 @@ def _preflight(path: Path) -> dict:
         ) from None
     if not isinstance(doc, dict):
         raise SettingsError(f"{path} must contain a JSON object, found {type(doc).__name__}.")
-    for key, expected in (("extraKnownMarketplaces", dict), ("enabledPlugins", dict)):
+    for key, expected in (("extraKnownMarketplaces", dict), ("enabledPlugins", dict), ("permissions", dict)):
         if key in doc and not isinstance(doc[key], expected):
             raise SettingsError(
                 f"{path}: `{key}` must be a JSON object, found {type(doc[key]).__name__}."
             )
+    allow = doc.get("permissions", {}).get("allow")
+    if allow is not None and not isinstance(allow, list):
+        raise SettingsError(
+            f"{path}: `permissions.allow` must be a JSON array, found {type(allow).__name__}."
+        )
     return doc
+
+
+def has_cli_permission(doc: dict) -> bool:
+    allow = doc.get("permissions", {}).get("allow") if isinstance(doc.get("permissions"), dict) else None
+    return isinstance(allow, list) and CLI_PERMISSION in allow
+
+
+def read_settings(root: Path) -> dict:
+    """The parsed settings document, or {} when absent or unreadable (advisory readers only)."""
+    try:
+        return _preflight(root / SETTINGS_REL)
+    except SettingsError:
+        return {}
 
 
 def _json_type(value: object) -> str:
@@ -206,6 +228,13 @@ def _merge(doc: dict, repo: str, force: bool) -> tuple[dict, list[str], list[str
         )
     elif current is not True:
         plugins[plugin_ref] = True
+
+    # The CLI allow rule: append, never reorder or remove anything already there.
+    perms = merged.setdefault("permissions", {})
+    allow = perms.setdefault("allow", [])
+    if CLI_PERMISSION not in allow:
+        allow.append(CLI_PERMISSION)
+        notes.append(f"allowed {CLI_PERMISSION} so the skills' CLI calls don't prompt")
 
     return merged, conflicts, notes
 

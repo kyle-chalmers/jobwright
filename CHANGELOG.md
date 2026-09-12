@@ -3,6 +3,97 @@
 All notable changes to jobwright are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions follow semver.
 
+## [0.5.0] — 2026-09-11
+
+Onboarding, redesigned from the two real adoptions and the transcripts they left behind. One repo
+adopted jobwright, then removed it and kept the artifacts; the other still has it, with an empty
+catalog and an `AGENTS.md` that never mentioned it. In both, `/setup` was eight hand-driven steps
+that ended with `validate-job` red on every job, and three of the seven skills were never invoked.
+
+### Changed
+- **`jobwright init` is the whole onboarding, and it is idempotent.** After the config it now
+  catalogs the jobs, writes the agent block (below), writes a README only when the repo has none,
+  runs `doctor`, and ends with a one-screen **Setup report**: what was written this run, the exact
+  `git add` line, jobs catalogued and folders skipped, documentation debt ("9 of 12 jobs have no
+  `claude.md` yet — `/start-job` documents a job the first time it is touched"), deprecated-schema
+  debt, the doctor verdict, what was deliberately not run, and `Next: /start-job <ticket>`.
+  Re-run on a repo that already has a config, it **keeps the config and completes what is
+  missing** instead of exiting; that is how a repo full of jobs is adopted, so the separate adopt
+  procedure is gone. Every step after the config write is fail-soft: a failure is reported and the
+  next step still runs. `--config-only` keeps the old stop-after-config behaviour for scripts.
+  **[review]** `install-precommit` is *not* run by `init` (opt-in via `--precommit` or the
+  one-liner in the report): it writes into the git hooks dir every linked worktree shares, which
+  is what produced the dirty-catalog-in-worktrees friction on the first adopter.
+- **Skills: seven → five.** `/document-job` (0 invocations) is Phase 3 of `/start-job`
+  (`skills/start-job/document.md`); `/build-jobs-index` (0 invocations) is owned by `init`, the
+  hooks and `/start-job`, with `jobwright jobs-index` still there for a shell. No aliases.
+- **`/start-job` does all read-only work before any write, behind one approval.** Recall uses
+  `jobs-index --check` (**[review]** plain `jobs-index` rewrote the catalog before anything was
+  approved); state is detected from the filesystem, never asked; an existing job is still planned
+  against the ticket (**[review]** a green job with a change request no longer routes straight to
+  deploy); the consolidated question includes the job name when it was not given (**[review]**
+  `new-job` requires it). No config → it follows `/setup` inline instead of stopping.
+- **Every skill ends with `## Next`** naming the command that follows (`bin/selftest.sh` checks).
+  `/safe-deploy` routes a docs-only validation failure on a pre-jobwright job to `/start-job`
+  rather than dead-ending; there is no override. `/triage-failure` records the finding in the
+  job's `claude.md` and routes the fix through `/start-job`.
+- **`doctor` has three states.** ERROR (invalid config, dead `job_def_dirs`, deploy-model
+  mismatch) exits 1; DEGRADED (no adapter, platform CLI or `jobwright` not on PATH, allow rule
+  missing) exits 0 and names what the live steps need; OK. **[review]** Before, a platform `init`
+  accepted (dagster, glue, adf) made the very next step red.
+- **`gen-agents` writes a managed block by default**, between `<!-- jobwright:begin v1 -->` /
+  `<!-- jobwright:end -->`, into the first of `AGENTS.md` / `CLAUDE.md` that exists (creating
+  `AGENTS.md` when neither does). Re-runs replace only the block; text outside is never touched;
+  **[review]** markers inside a fenced example do not count, and any malformed marker shape is
+  reported and left alone. `--full` keeps the old rulebook sidecar. Neither adopter ever merged
+  that sidecar, so their agents never learned the front door existed.
+- **`configure-claude` (so `init`) adds `Bash(jobwright:*)` to the project's
+  `permissions.allow`**, appended after whatever is there. **[review]** The rule that stopped the
+  prompt-on-every-verb fatigue lived only in one person's global settings.
+
+### Added
+- **`jobwright install-shim`** writes `~/.local/bin/jobwright`: a marked shim that runs the newest
+  version in the Claude Code plugin cache (honouring `JOBWRIGHT_PLUGIN_CACHE`), so terminals and
+  git hooks run the same jobwright Claude Code does. Refuses to overwrite a file it does not manage
+  without `--force`; warns when the directory is not on PATH. `/setup` runs it when `jobwright` is
+  missing or shadowed, and says so; `init` never writes to the home directory. This is the PATH
+  story the second adopter hand-wrote.
+- `doctor` reports CLI reachability (on PATH, which one, skewed?) and the missing allow rule.
+- `AGENTS.md` at the repo root: mission, vision, nine tiebreakers, and the gate. `.claude/CLAUDE.md` is
+  its stub (a root `CLAUDE.md` fails `claude plugin validate --strict`). The README opens with the mission and vision.
+- `docs/install-notes.md` holds the autoUpdate, two-config-files, PATH and uninstall detail that
+  used to crowd the README (now under 150 lines).
+- Tests for every new state transition (`tests/test_onboarding.py`): complete-mode idempotency
+  leaves `git status` clean, the report's debt line, `init` outside git, a failing step reported
+  not fatal, block insert/replace/CLAUDE.md-only/AGENTS-wins/fenced/malformed, the permission
+  merge keeping existing rules, doctor's three exits, the shim resolving `sort -V` newest, and the
+  launcher exiting 127 instead of recursing through the shim with no `uvx`/`pipx` on PATH.
+
+### Fixed
+- **The launcher could recurse through a PATH shim.** **[review]** `bin/jobwright-plugin`'s
+  last-resort branch excluded only its own directory, so with neither `uvx` nor `pipx` installed,
+  shim → launcher → `command -v jobwright` → shim looped forever. It now skips any candidate that
+  forwards back to it, the same check the `JOBWRIGHT_BIN` branch already had.
+- **`init` refuses to overwrite a catalog it did not generate.** **[review]** With `jobs_dir: "."` a
+  hand-written `JOBS.md` or someone's `graph/` folder at the repo root would have been rewritten
+  and pruned by the first `init`; it now reports the files and skips the catalog step.
+- **`init` never writes through a symlinked `AGENTS.md` / `CLAUDE.md` / `README.md`** and refuses
+  an instruction file that is not decodable as text rather than rewriting it with replacement characters. **[review]**
+  Markers inside `~~~` fences are ignored like those inside ``` fences.
+- **A fresh `init` from a subdirectory sets up at the git top level** (cwd only outside git), so
+  `cd jobs/JOB-1 && jobwright init` no longer nests a second installation. **[review]**
+- The Setup report says "not a git repo" instead of printing a `git add` line that cannot run,
+  and a failure writing the local profile file no longer aborts the remaining steps. **[review]**
+- `/setup` and `/start-job` fall back to the plugin launcher for the rest of the session when a
+  stale `jobwright` is still first on PATH after `install-shim`. **[review]** `/triage-failure`
+  may edit `claude.md` (it records the finding there).
+- The wizard writes `graph_notes` as a commented default and the example config documents
+  `replace_hints` and the `governance` block, so every key `init` writes is documented (tested).
+
+### Removed
+- `skills/document-job/`, `skills/build-jobs-index/`, `skills/setup/adopt.md`. If a stale copy of a
+  removed skill lingers in your plugin cache after updating, run `/reload-plugins` or reinstall.
+
 ## [0.4.1] — 2026-09-02
 
 Polish from adopting a repo end to end — the papercuts a first-time adopter hits in the first hour.

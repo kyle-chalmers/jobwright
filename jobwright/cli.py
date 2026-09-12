@@ -6,10 +6,7 @@ place. Phase 0 ships: ``doctor``, ``jobs-index`` (build/check), and ``diff-job``
 
 from __future__ import annotations
 
-import contextlib
 import os
-import re
-import shutil
 import sys
 from pathlib import Path
 
@@ -49,148 +46,32 @@ def _load():
     return cfg, cfg_path.parent
 
 
-def _version_key(v: str) -> tuple:
-    """Order versions: numeric segments (zero-padded to compare 0.4 == 0.4.0), then final > pre-release.
-    '0.4.2rc1' sorts below '0.4.2' and above '0.4.1'; anything unparsable sorts lowest."""
-    m = re.match(r"^(\d+(?:\.\d+)*)(.*)$", v.strip())
-    if not m:
-        return ((), 0, "")
-    nums = tuple(int(x) for x in m.group(1).split("."))
-    nums = nums + (0,) * (4 - len(nums))
-    suffix = m.group(2).lstrip("-.")
-    return (nums, 0 if suffix else 1, suffix)
-
-
-def _newest_cached_version() -> str:
-    """The newest jobwright the Claude Code plugin cache holds, or '' when there is none.
-
-    A `pip install jobwright` on PATH can shadow the plugin's CLI and silently run releases behind
-    what Claude Code runs; comparing against the cache turns that into a one-line warning."""
-    cache = Path(os.environ.get("JOBWRIGHT_PLUGIN_CACHE", Path.home() / ".claude" / "plugins" / "cache" / "jobwright" / "jobwright"))
-    if not cache.is_dir():
-        return ""
-    versions = [d.name for d in cache.iterdir() if d.is_dir() and re.match(r"^\d", d.name)]
-    return max(versions, key=_version_key) if versions else ""
-
-
-def _version_skew_warning() -> str:
-    newest = _newest_cached_version()
-    if newest and _version_key(newest) > _version_key(__version__):
-        return (f"this CLI is {__version__} but the Claude Code plugin cache holds {newest} — a pip install on PATH is "
-                "shadowing the plugin's CLI. Use the plugin's launcher, or pip uninstall jobwright.")
-    return ""
+# The version-skew and provenance helpers live in doctor.py now; `_version_key` stays
+# importable from here for callers that learned the old name.
+from .doctor import version_key as _version_key  # noqa: E402, F401
 
 
 @app.command()
 def version() -> None:
     """Print the jobwright version."""
+    from .doctor import version_skew_warning
+
     typer.echo(__version__)
-    warn = _version_skew_warning()
+    warn = version_skew_warning()
     if warn:
         typer.secho(f"warning: {warn}", fg=typer.colors.YELLOW, err=True)
 
 
-def _cli_provenance() -> str:
-    """How this CLI was resolved — a plugin-provisioned run looks different from a pip one."""
-    if os.environ.get("JOBWRIGHT_BIN"):
-        return f"{sys.executable} (via JOBWRIGHT_BIN)"
-    exe = Path(sys.executable).resolve()
-    if "/uv/" in str(exe) or ".cache/uv" in str(exe):
-        return f"{exe} (provisioned by uv — plugin install)"
-    if "pipx" in str(exe):
-        return f"{exe} (provisioned by pipx)"
-    return str(exe)
-
-
 @app.command()
 def doctor() -> None:
-    """Check config + environment: platform, profile, CLI availability, adapter."""
-    cfg_path = find_config()
-    if cfg_path is None:
-        typer.secho(f"✗ no {CONFIG_FILENAME} found — {SETUP_HINT}", fg=typer.colors.RED)
-        raise typer.Exit(1)
-    typer.secho(f"✓ config: {cfg_path}", fg=typer.colors.GREEN)
-    try:
-        cfg = load_config(cfg_path)
-    except ConfigError as exc:
-        typer.secho(f"✗ config invalid: {exc}", fg=typer.colors.RED)
-        raise typer.Exit(1) from None
+    """Check config + environment. OK / DEGRADED (live steps need something; exit 0) / ERROR (exit 1)."""
+    from . import doctor as doctor_mod
 
-    typer.echo(f"  platform.kind     = {cfg.platform.kind}")
-    src = {"local": " (jobwright.config.local.yaml)", "team": " (jobwright.config.yaml — a team default)"}.get(cfg.platform.profile_source, "")
-    typer.echo(f"  platform.profile  = {cfg.platform.profile or '(none — set yours in jobwright.config.local.yaml)'}{src}")
-    typer.echo(f"  deploy_model      = {cfg.platform.deploy_model}")
-    typer.echo(f"  warehouse.dialect = {cfg.warehouse.dialect}")
-    typer.echo(f"  jobs_dir          = {cfg.project.jobs_dir}")
-    typer.echo(f"  key_prefixes      = {', '.join(cfg.project.key_prefixes) or '(none)'}")
-    typer.echo(f"  deprecated_deny   = {', '.join(cfg.architecture.deprecated_schema_deny) or '(none)'}")
-    # Where this CLI came from. Under a plugin install it is provisioned on demand, so a
-    # slow first call is explainable rather than mysterious.
-    typer.echo(f"  cli               = {_cli_provenance()}")
-    skew = _version_skew_warning()
-    if skew:
-        typer.secho(f"✗ {skew}", fg=typer.colors.RED)
-        ok_skew = False
-    else:
-        ok_skew = True
-
-    ok = ok_skew
-    # Interdependent keys (job_def_dirs vs dags_dir depends on deploy_model). Loading
-    # stays lenient so old configs keep working; doctor is where mistakes get named.
-    from .config import cross_validate
-
-    for err in cross_validate(cfg):
-        typer.secho(f"✗ {err}", fg=typer.colors.RED)
-        ok = False
-
-    # cross_validate only proves the keys agree with each other. A path that agrees but
-    # points nowhere (the wizard's fallback when nothing was detected) would otherwise
-    # pass, and every downstream scan would quietly find zero files.
-    if cfg.platform.deploy_model in ("api-reset", "sql-ddl"):
-        for env, rel in cfg.platform.job_def_dirs.items():
-            if not (cfg_path.parent / rel).is_dir():
-                typer.secho(
-                    f"✗ platform.job_def_dirs.{env} = {rel} does not exist — drift detection and "
-                    "job-def checks have nothing to scan; point it at the directory holding your "
-                    "job-definition files (or remove that env).",
-                    fg=typer.colors.RED,
-                )
-                ok = False
-
-    try:
-        from .platforms import adapter_kinds, get_adapter_class
-
-        if cfg.platform.kind in adapter_kinds():
-            cls = get_adapter_class(cfg.platform.kind)
-            typer.secho(f"✓ adapter: {cls.__name__} (deploy_model={cls.deploy_model})", fg=typer.colors.GREEN)
-            if cls.deploy_model != cfg.platform.deploy_model:
-                typer.secho(
-                    f"✗ deploy_model mismatch: config says '{cfg.platform.deploy_model}' but the "
-                    f"{cfg.platform.kind} adapter is '{cls.deploy_model}'. Fix config — a wrong "
-                    "deploy_model can disable drift detection.",
-                    fg=typer.colors.RED,
-                )
-                ok = False
-        else:
-            typer.secho(
-                f"✗ no adapter registered for '{cfg.platform.kind}' (have: {adapter_kinds()})",
-                fg=typer.colors.RED,
-            )
-            ok = False
-    except Exception as exc:  # pragma: no cover
-        typer.secho(f"✗ adapter registry error: {exc}", fg=typer.colors.RED)
-        ok = False
-
-    # Probe likely CLIs for this platform (advisory only).
-    probe = {"databricks": ["databricks"], "airflow": ["airflow"], "dbt": ["dbt"],
-             "prefect": ["prefect"], "snowflake_tasks": ["snow"]}.get(cfg.platform.kind, [])
-    for binary in probe:
-        if shutil.which(binary):
-            typer.secho(f"✓ `{binary}` on PATH", fg=typer.colors.GREEN)
-        else:
-            typer.secho(f"  (note) `{binary}` not on PATH — live verbs (diff/run) will be unavailable", fg=typer.colors.YELLOW)
-
-    raise typer.Exit(0 if ok else 1)
+    rep = doctor_mod.run()
+    colors = {"green": typer.colors.GREEN, "yellow": typer.colors.YELLOW, "red": typer.colors.RED, None: None}
+    for color, line in doctor_mod.render(rep):
+        typer.secho(line, fg=colors[color])
+    raise typer.Exit(rep.exit_code)
 
 
 @app.command("jobs-index")
@@ -291,6 +172,19 @@ def _ask(label: str, default: str, check) -> str:
             typer.secho(f"  {exc}", fg=typer.colors.RED)
 
 
+def _finish_setup(root: Path, cfg, *, claude_settings: bool, precommit: bool, written: list[str]) -> None:
+    """The steps after the config exists, then the one-screen report. Shared by both init modes."""
+    from . import onboarding
+
+    summary = onboarding.complete(
+        root, cfg, claude_settings=claude_settings, precommit=precommit, already_written=written
+    )
+    for step in summary.steps:
+        mark = "  ·" if step.ok else "  ✗"
+        typer.secho(f"{mark} {step.name}: {step.detail}", fg=None if step.ok else typer.colors.YELLOW)
+    typer.echo(onboarding.render(summary))
+
+
 @app.command()
 def init(
     yes: bool = typer.Option(False, "--yes", "-y", help="accept the detected proposal, ask nothing"),
@@ -298,8 +192,19 @@ def init(
     no_claude_settings: bool = typer.Option(
         False, "--no-claude-settings", help="don't touch the repo's .claude/settings.json"
     ),
+    config_only: bool = typer.Option(
+        False, "--config-only", help="write the config and stop (skip catalog, agent block, README, doctor)"
+    ),
+    precommit: bool = typer.Option(
+        False, "--precommit", help="also install the catalog pre-commit hook (writes to the shared git hooks dir)"
+    ),
 ) -> None:
-    """Set up jobwright here — detect your platform, ask at most 5 questions, write a validated config."""
+    """Set up jobwright here, end to end: detect the platform, ask at most 5 questions, write a
+    validated config, then catalog the jobs, brief the agent, and check the result.
+
+    Re-running on a repo that already has a config keeps the config and completes whatever
+    is missing — that is how a repo full of jobs is adopted.
+    """
     from . import claudesettings
     from .config import (
         PLATFORM_KINDS,
@@ -312,19 +217,33 @@ def init(
 
     existing = find_config()
     if existing is not None and not force:
+        # Complete mode: the config is the team's; keep it and finish the rest idempotently.
         typer.secho(
-            f"{CONFIG_FILENAME} already exists at {existing} — this repo is set up.\n"
-            "Check it with `jobwright doctor`, edit it directly, or re-run `jobwright init --force` "
-            "to start over.",
-            fg=typer.colors.YELLOW,
+            f"{CONFIG_FILENAME} already exists at {existing} — config kept, completing setup.",
+            fg=typer.colors.GREEN,
         )
+        try:
+            cfg = load_config(existing)
+        except ConfigError as exc:
+            typer.secho(
+                f"config invalid: {exc}\nFix it (or start over with `jobwright init --force`) and re-run.",
+                fg=typer.colors.RED,
+            )
+            raise typer.Exit(2) from None
+        if config_only:
+            typer.echo("(--config-only: nothing else to do)")
+            raise typer.Exit(0)
+        _finish_setup(existing.parent, cfg, claude_settings=not no_claude_settings, precommit=precommit, written=[])
         raise typer.Exit(0)
 
     # --force replaces the config where it actually lives: running from a subdirectory
-    # must not leave a second config in cwd shadowing the real one for this subtree.
-    root = existing.parent if existing is not None else Path.cwd()
-    if root != Path.cwd():
+    # must not leave a second config in cwd shadowing the real one for this subtree. A fresh
+    # setup lands at the git top level for the same reason (cwd only outside git).
+    root = existing.parent if existing is not None else claudesettings.repo_root()
+    if existing is not None and root != Path.cwd():
         typer.echo(f"(replacing the existing config at {existing})")
+    elif existing is None and root != Path.cwd():
+        typer.echo(f"(setting up at the repo root, {root})")
     det = detect(root)
     if det.evidence:
         typer.secho(f"Detected platform: {det.platform}", fg=typer.colors.GREEN)
@@ -406,6 +325,7 @@ def init(
             raise typer.Exit(2) from None
 
     (root / CONFIG_FILENAME).write_text(text)
+    written = [CONFIG_FILENAME]
     # Never hand doctor a config that fails its own check: if the wizard fell back to the default
     # definition dirs (nothing was detected), create them so drift detection has a place to scan.
     if cfg.platform.deploy_model != "git-sync" and not det.job_def_dirs:
@@ -414,13 +334,19 @@ def init(
             keep = root / rel / ".gitkeep"
             if not any((root / rel).iterdir()):
                 keep.write_text("")
+                written.append(f"{rel}/.gitkeep")
     typer.secho(f"\nWrote {CONFIG_FILENAME}:", fg=typer.colors.GREEN)
     jobs_where = "at the repo root" if cfg.project.jobs_dir == "." else f"in {cfg.project.jobs_dir}/"
     typer.echo(f"  platform {cfg.platform.kind} · deploys: {cfg.platform.deploy_model} · jobs {jobs_where}")
     # the profile is per-user: it goes to the gitignored local file, never the committed one
     local_note = "(none)"
     if profile and DEPLOY_MODEL_BY_KIND[kind] != "git-sync":
-        local_note = _write_local_config(root, profile)
+        try:
+            local_note = _write_local_config(root, profile)
+        except OSError as exc:  # fail-soft: the config is written; the report still comes
+            local_note = f"NOT written ({exc}) — set platform.profile in jobwright.config.local.yaml by hand"
+        if "added to .gitignore" in local_note:
+            written.append(".gitignore")
     typer.echo(f"  profile: {local_note}")
     typer.echo(
         f"  warehouse: {cfg.warehouse.dialect} — committed; confirm it matches your team's convention."
@@ -429,15 +355,17 @@ def init(
         "  Commented defaults inside cover the rest (ticket links, governance fields, exceptions) — edit anytime."
     )
 
-    if not no_claude_settings:
-        _configure_claude(root, force=False)
+    if config_only:
+        if not no_claude_settings:
+            _configure_claude(root, force=False)
+        typer.echo("\n(--config-only) Next: `jobwright init` again to catalog the jobs and finish setup, or `jobwright doctor`.")
+        raise typer.Exit(0)
 
-    typer.echo(
-        "\nNext: `jobwright doctor` to verify, then `jobwright jobs-index` to build the catalog.\n"
-        "Then: `jobwright install-precommit` — keeps the generated catalog committed with the job\n"
-        "  docs, so a stale catalog never shows up as phantom uncommitted changes in a worktree."
+    # load the file we just wrote, so the completion steps see exactly what doctor will
+    _finish_setup(
+        root, load_config(root / CONFIG_FILENAME),
+        claude_settings=not no_claude_settings, precommit=precommit, written=written,
     )
-
 
 def _write_local_config(root: Path, profile: str) -> str:
     """Write jobwright.config.local.yaml (unless present) and make sure git ignores it."""
@@ -525,35 +453,7 @@ def new_job_cmd(
     typer.echo(f"\nNext: fill the TODOs, then `jobwright validate-job {res.job_dir.relative_to(root)}`.")
 
 
-PRECOMMIT_MARKER = "# jobwright-managed pre-commit v1"
-
-
-def _hooks_dir(root: Path) -> Path:
-    """Where git looks for hooks in THIS repo.
-
-    Honors ``core.hooksPath`` when set; otherwise ``--git-common-dir``/hooks. The common
-    dir is the important part: linked worktrees share it, so one install covers every
-    current and future worktree rather than just the one we happen to be standing in.
-    """
-    import subprocess
-
-    def _git(*args: str) -> str:
-        out = subprocess.run(
-            ["git", *args], cwd=str(root), capture_output=True, text=True, timeout=10
-        )
-        if out.returncode != 0:
-            raise RuntimeError((out.stderr or "").strip() or f"git {' '.join(args)} failed")
-        return out.stdout.strip()
-
-    configured = ""
-    # unset => git exits 1; fall through to the common dir
-    with contextlib.suppress(RuntimeError):
-        configured = _git("config", "--get", "core.hooksPath")
-    if configured:
-        p = Path(configured).expanduser()
-        return p if p.is_absolute() else (root / p)
-    common = Path(_git("rev-parse", "--git-common-dir"))
-    return (common if common.is_absolute() else (root / common)) / "hooks"
+from .onboarding import PRECOMMIT_MARKER, hooks_dir as _hooks_dir  # noqa: E402, F401, I001
 
 
 @app.command("install-precommit")
@@ -564,32 +464,19 @@ def install_precommit(
 
     Without it, a job doc can land without its catalog; the committed catalog goes stale,
     and every worktree branched from that commit inherits the drift as phantom
-    uncommitted changes once the PostToolUse hook rebuilds.
+    uncommitted changes once the PostToolUse hook rebuilds. Opt-in (also `init --precommit`)
+    because it writes into the hooks dir every linked worktree shares.
     """
+    from .onboarding import PrecommitError
+    from .onboarding import install_precommit as _install
+
     _cfg, root = _load()
-
     try:
-        hooks_dir = _hooks_dir(root)
-    except (RuntimeError, OSError) as exc:
-        typer.secho(f"Not a git repo (or git unavailable): {exc}", fg=typer.colors.RED)
-        raise typer.Exit(2) from None
-
-    template = Path(__file__).parent / "_templates" / "repo" / "pre-commit.sh"
-    target = hooks_dir / "pre-commit"
-    if target.exists() and PRECOMMIT_MARKER not in target.read_text(errors="replace") and not force:
-        typer.secho(f"✗ {target} already exists and jobwright doesn't manage it.", fg=typer.colors.RED)
-        typer.echo(
-            "  Refusing to clobber it. Either append the jobwright logic to your hook:\n"
-            f"    {template}\n"
-            "  ...or re-run with --force to replace it."
-        )
-        raise typer.Exit(1)
-
-    body = template.read_text()
-    hooks_dir.mkdir(parents=True, exist_ok=True)
-    target.write_text(body)
-    target.chmod(0o755)
-
+        target = _install(root, force=force)
+    except PrecommitError as exc:
+        msg = str(exc)
+        typer.secho(f"✗ {msg}", fg=typer.colors.RED)
+        raise typer.Exit(2 if msg.startswith("not a git repo") else 1) from None
     typer.secho(f"✓ Installed {target}", fg=typer.colors.GREEN)
     typer.echo(
         "  Runs only for commits touching the jobs dir, and never blocks a commit.\n"
@@ -599,12 +486,29 @@ def install_precommit(
 
 @app.command("gen-agents")
 def gen_agents_cmd(
-    output: str = typer.Option("AGENTS.jobwright.md", "--output", "-o", help="output path (relative to repo root)"),
+    full: bool = typer.Option(False, "--full", help="write the full rulebook to a sidecar file instead of the short managed block"),
+    output: str = typer.Option("", "--output", "-o", help="(with --full) output path, relative to repo root; default AGENTS.jobwright.md"),
 ) -> None:
-    """Render an AGENTS.md rulebook from config (the generated rulebook)."""
+    """Tell the agent in this repo about jobwright.
+
+    Default: a short managed block in AGENTS.md (or CLAUDE.md when that is what the repo has;
+    AGENTS.md is created when neither exists) between `<!-- jobwright:begin -->` / `<!-- jobwright:end -->`
+    markers — re-runs replace only that block. `--full` renders the whole rulebook to a sidecar.
+    """
+    from . import agentsblock
     from .scaffolder import render_agents_md
 
     cfg, root = _load()
+    if not full and not output:
+        res = agentsblock.apply(root, cfg)
+        if res.action == "malformed":
+            typer.secho(f"✗ {res.message}", fg=typer.colors.RED)
+            raise typer.Exit(1)
+        typer.secho(f"{res.message}.", fg=typer.colors.GREEN if res.changed else None)
+        if res.changed:
+            typer.echo(f"  commit it:  git add {res.path.relative_to(root)}")
+        return
+    output = output or "AGENTS.jobwright.md"
     out = (root / output).resolve()
     try:
         out.relative_to(root.resolve())
@@ -613,6 +517,48 @@ def gen_agents_cmd(
         raise typer.Exit(2) from None
     out.write_text(render_agents_md(cfg))
     typer.secho(f"Wrote {out.relative_to(root.resolve())} from jobwright.config.yaml.", fg=typer.colors.GREEN)
+
+
+@app.command("install-shim")
+def install_shim(
+    directory: str = typer.Option("~/.local/bin", "--dir", help="where to put the `jobwright` shim (should be on PATH)"),
+    force: bool = typer.Option(False, "--force", help="replace a `jobwright` file jobwright doesn't manage (e.g. a stale pip install)"),
+) -> None:
+    """Put `jobwright` on PATH, running the newest plugin version from the Claude Code cache.
+
+    Terminals and git hooks have no plugin launcher in scope; a `pip install` on PATH once
+    shadowed the plugin and silently ran an old release. The shim resolves the plugin cache at
+    call time, so a plugin update can never leave it stale. Once per machine; never run by `init`.
+    """
+    from .doctor import SHIM_MARKER
+
+    target_dir = Path(directory).expanduser()
+    target = target_dir / "jobwright"
+    template = Path(__file__).parent / "_templates" / "shim" / "jobwright.sh"
+    if target.exists() or target.is_symlink():
+        try:
+            managed = SHIM_MARKER in target.read_text(errors="replace")
+        except OSError:
+            managed = False
+        if not managed and not force:
+            typer.secho(
+                f"✗ {target} already exists and jobwright doesn't manage it — likely a pip/pipx install.\n"
+                "  Refusing to clobber it. `pip uninstall jobwright` first, or re-run with --force to replace it.",
+                fg=typer.colors.RED,
+            )
+            raise typer.Exit(1)
+        if target.is_symlink():
+            target.unlink()
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target.write_text(template.read_text())
+    target.chmod(0o755)
+    typer.secho(f"✓ Installed {target} — `jobwright <verb>` now runs the plugin's own CLI.", fg=typer.colors.GREEN)
+    on_path = any(Path(p).expanduser().resolve() == target_dir.resolve() for p in os.environ.get("PATH", "").split(os.pathsep) if p)
+    if not on_path:
+        typer.secho(
+            f"  note: {target_dir} is not on your PATH — add it (e.g. `export PATH=\"{target_dir}:$PATH\"` in your shell rc).",
+            fg=typer.colors.YELLOW,
+        )
 
 
 @app.command("gen-readme")
