@@ -58,12 +58,17 @@ if [ "${JOBWRIGHT_SELFTEST_ARTIFACTS:-0}" = "1" ]; then
     echo "FAIL: a sensitive shape is present in the BUILT ARTIFACTS"; exit 1; }
 fi
 
-echo "==> v2 skill surface (7 skills)"
-for s in setup start-job document-job safe-deploy triage-failure architecture-audit build-jobs-index; do
-  [ -f "skills/$s/SKILL.md" ] || { echo "FAIL: missing v2 skill: $s"; exit 1; }
+echo "==> skill surface (5 skills)"
+for s in setup start-job safe-deploy triage-failure architecture-audit; do
+  [ -f "skills/$s/SKILL.md" ] || { echo "FAIL: missing skill: $s"; exit 1; }
 done
-extra="$(ls -d skills/*/ | grep -Ev '/(setup|start-job|document-job|safe-deploy|triage-failure|architecture-audit|build-jobs-index)/$' || true)"
-[ -z "$extra" ] || { echo "FAIL: unexpected skill folder (v1 leftover?): $extra"; exit 1; }
+extra="$(ls -d skills/*/ | grep -Ev '/(setup|start-job|safe-deploy|triage-failure|architecture-audit)/$' || true)"
+[ -z "$extra" ] || { echo "FAIL: unexpected skill folder (retired leftover?): $extra"; exit 1; }
+# every skill ends by naming the next one — a skill that stops without a handoff is unfinished
+for f in skills/*/SKILL.md; do
+  last="$(grep -E '^## ' "$f" | tail -1)"
+  [ "$last" = "## Next" ] || { echo "FAIL: $f must END with a '## Next' section (last section is '$last')"; exit 1; }
+done
 # the two mechanical UX guarantees: safe-deploy validates before deploying,
 # and the session hook announces the guard instead of leaving it invisible
 grep -q 'validate-job' skills/safe-deploy/SKILL.md \

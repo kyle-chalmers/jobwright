@@ -8,7 +8,7 @@ ROOT="${CLAUDE_PROJECT_DIR:-$PWD}"
 CFG="$ROOT/jobwright.config.yaml"
 [ -f "$CFG" ] || exit 0
 
-echo "jobwright repo detected. Front door: /start-job <ticket> (recall → scaffold → document → validate → deploy). Other skills: /setup /document-job /safe-deploy /triage-failure /architecture-audit /build-jobs-index. CLI: jobwright doctor | jobs-index | validate-job <folder> | check architecture <path> | diff-job <job>."
+echo "jobwright repo detected. Front door: /start-job <ticket> (recall → plan → document → validate → route to deploy). Also: /safe-deploy <job> (the only deploy path) · /triage-failure <job> · /architecture-audit <path> · /setup. CLI: jobwright doctor | validate-job <folder> | diff-job <job> | jobs-index | check architecture <path>."
 
 # Catalog summary, if the index has been generated (cheap: read two header lines).
 # `|| true` guards each pipeline so a no-match grep can't trip `set -e`/pipefail.

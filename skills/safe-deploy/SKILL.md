@@ -17,8 +17,10 @@ The deploy-safety guard backstops you at the command level, but run the flow del
    ```bash
    jobwright validate-job <job-folder>
    ```
-   On FAIL, stop here: fix the findings (or hand back to `/start-job`) and re-run until PASS.
-   Deploying an unvalidated job is the exact bypass this step closes.
+   On FAIL, stop here and route: a documentation-only failure on a job that predates jobwright
+   (no `claude.md` yet — common right after adoption) → `/start-job <job>` drafts the docs from
+   the code in minutes; any other failure → fix the findings, re-run until PASS. There is no
+   override. Deploying an unvalidated job is the exact bypass this step closes.
 2. **Diff live-vs-repo.**
    ```bash
    jobwright diff-job <job>
@@ -52,3 +54,9 @@ the concrete fix to *that* artifact. If the gap is in jobwright itself, file it 
 plugin repo (issue or a note the user can act on) rather than patching around it locally.
 Fixing the layer, not the instance, is what compounds. (Ported from ticketwright's /ship
 Phase C.)
+
+## Next
+
+Watch the first scheduled run land (`jobwright diff-job <job>` stays clean; the run's terminal
+state is success). A failed run → `/triage-failure <job> [run-id]`. Another ticket → `/start-job
+<ticket>`.

@@ -16,7 +16,9 @@ Each check is `✓` or `✗`:
 Fix and re-run until PASS. Do not open a PR — and never hand off to `/safe-deploy` — on a FAIL.
 Surface remaining migration debt to the user as a follow-up; it does not block the gate.
 
-## Where the pieces went (v1 → v2)
+## Where the pieces went
 
-Scaffolding and validation are phases of this skill now; `jobwright new-job` and
+Scaffolding, documenting (formerly `/document-job`) and validation are phases of this skill; the
+catalog (formerly `/build-jobs-index`) is maintained by `/setup`, this skill's Phase 4, and the
+hooks. `jobwright new-job`, `jobwright check docs`, `jobwright jobs-index` and
 `jobwright validate-job` remain available directly for one-off use.

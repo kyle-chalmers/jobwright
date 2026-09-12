@@ -38,6 +38,11 @@ architecture:                      # schema-reference compliance scan (no DB con
     REPORTING: [STAGING, ANALYTICS, REPORTING]
   deprecated_schema_deny: [LEGACY_STORE]   # references to these are flagged as migration debt
   # read_exceptions: [ANALYTICS.PUBLIC.SOME_VIEW]   # sanctioned exact-FQN bypasses
+  # replace_hints: { LEGACY_STORE: 'use ANALYTICS.*' }   # shown next to a deprecated finding
+
+# governance:                      # the documentation gate (`jobwright check docs`) — these are the defaults
+#   claude_md_required: [Purpose, Schedule, Business Owner]
+#   header_required: [JOB, TICKET, PURPOSE, STATUS]
 
 # -----------------------------------------------------------------------------
 # Example B — an Airflow + BigQuery repo (git-sync; code is the source of truth):

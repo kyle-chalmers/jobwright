@@ -1,5 +1,5 @@
 """v2 UX contract: the `init` wizard, interdependent-key validation, the
-7-skill surface, and the guard announcement.
+5-skill surface, and the guard announcement.
 
 The consumer-shaped config test mirrors the *shape* of a real downstream repo
 (api-reset + job_def_dirs + multiple key prefixes) with generic values only —
@@ -23,11 +23,9 @@ SESSION_HOOK = REPO / "hooks" / "session_start.sh"
 V2_SKILLS = [
     "setup",
     "start-job",
-    "document-job",
     "safe-deploy",
     "triage-failure",
     "architecture-audit",
-    "build-jobs-index",
 ]
 
 
@@ -129,10 +127,10 @@ def test_cli_init_yes_writes_valid_config_and_is_idempotent(tmp_path, monkeypatc
     assert result.exit_code == 0, result.output
     cfg = load_config(tmp_path / "jobwright.config.yaml")
     assert cross_validate(cfg) == []
-    # second run: already set up, exit 0 without touching the file
+    # second run: complete mode — the config is kept byte for byte, the rest is finished idempotently
     before = (tmp_path / "jobwright.config.yaml").read_text()
     result = runner.invoke(app, ["init"])
-    assert result.exit_code == 0 and "already exists" in result.output
+    assert result.exit_code == 0 and "config kept" in result.output
     assert (tmp_path / "jobwright.config.yaml").read_text() == before
 
 
@@ -293,7 +291,7 @@ def test_cli_init_force_from_subdir_replaces_parent_config(tmp_path, monkeypatch
 
 
 # --------------------------------------------------------------------------- #
-# the v2 surface: 7 skills, guard announced, deploy gated
+# the surface: 5 skills, guard announced, deploy gated
 # --------------------------------------------------------------------------- #
 def test_v2_skill_surface():
     for s in V2_SKILLS:

@@ -1,5 +1,9 @@
 # Contributing to jobwright
 
+The mission, the vision, and the nine tiebreakers that decide ambiguous changes live in
+[`AGENTS.md`](AGENTS.md); read that first and cite it in review. The rules below are the
+mechanics.
+
 ## Ground rules
 
 1. **One implementation, many consumers.** Logic lives in the `jobwright` package. The CLI, the Claude Code skills, the hooks, and CI all call it — they never re-implement a check. A skill is a thin playbook that shells out to `jobwright ...`; it never embeds the check logic in prose.

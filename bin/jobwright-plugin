@@ -70,10 +70,13 @@ if command -v pipx >/dev/null 2>&1; then
   exec pipx run --spec "$plugin_root" jobwright "$@"
 fi
 
-# Last resort: an already-installed CLI. Never this script (that would recurse).
+# Last resort: an already-installed CLI. Never this script, and never a shim that forwards
+# back here (the `jobwright install-shim` shim, or anything else mentioning this launcher) —
+# with no uvx/pipx on the machine that would be shim -> launcher -> shim, forever.
 resolved="$(PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -vxF "$source_dir" | paste -sd: -)" \
             command -v jobwright 2>/dev/null || true)"
-if [ -n "$resolved" ] && [ "$(cd -P -- "$(dirname -- "$resolved")" && pwd)" != "$source_dir" ]; then
+if [ -n "$resolved" ] && [ "$(cd -P -- "$(dirname -- "$resolved")" && pwd)" != "$source_dir" ] \
+   && ! grep -qs 'jobwright-plugin\|JOBWRIGHT_BIN\|jobwright-managed shim' "$resolved" 2>/dev/null; then
   exec "$resolved" "$@"
 fi
 

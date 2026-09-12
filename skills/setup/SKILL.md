@@ -1,54 +1,60 @@
 ---
 name: setup
-description: Set up jobwright in a repo — detect the platform, answer at most 5 questions, and finish with a validated config, a jobs catalog, and the deploy-safety guard active. Also adopts repos that already have jobs.
-argument-hint: "(none) | adopt"
-allowed-tools: [Bash, Read, Edit, AskUserQuestion]
+description: Set up jobwright in a repo — fresh, or one that already has jobs. One command does the whole onboarding (detect the platform, at most 5 confirmations, config, catalog, agent briefing, doctor) and ends with a Setup report and the next step.
+argument-hint: "(none)"
+allowed-tools: [Bash, Read, AskUserQuestion]
 disable-model-invocation: true
 ---
 
-# setup
+# /setup
 
-One skill, two jobs: **configure a fresh repo** and **adopt a repo that already has jobs**
-(`/setup adopt`, or automatically when existing jobs are detected). Detect first, ask last —
-the wizard pre-fills every answer from what it finds, so a typical setup is 5 confirmations.
+One command, one screen, one next step. `jobwright init` detects what is already here, asks at
+most five questions with every answer pre-filled, writes the config, catalogs the jobs, briefs the
+agent, and checks the result. It works the same on an empty repo and on a repo full of jobs that
+was never configured; on a repo that already has a config it keeps that config and completes
+whatever is missing. Nothing that exists is renamed, moved, or overwritten.
 
-## Default mode — fresh repo
+## Steps
 
-1. Confirm the CLI runs: `jobwright version`. Under a plugin install the plugin provisions it
-   on demand — there is nothing to install globally. If it fails, `jobwright doctor` names what's
-   missing (uv or pipx).
-2. If the repo already has job folders or a `jobwright.config.yaml`, switch to [adopt.md](adopt.md).
-3. Run the wizard:
+1. **Reach the CLI.** Run `jobwright version`. If `jobwright` is not found, or it prints a
+   "shadowing the plugin" warning, run
+   ```bash
+   "${CLAUDE_PLUGIN_ROOT}/bin/jobwright-plugin" install-shim
+   ```
+   and tell the user where the shim was written (default `~/.local/bin/jobwright`) and whether
+   that directory still needs adding to PATH. Then re-check `jobwright version`: if it is still
+   missing or still shadowed (the shim's directory is not on PATH, or a stale install sits
+   earlier on it), run **every remaining command in this setup through the launcher** —
+   `"${CLAUDE_PLUGIN_ROOT}/bin/jobwright-plugin" <verb>` — and say why; do not let a stale
+   `jobwright` do the onboarding. Otherwise use `jobwright <verb>` from here on.
+2. **Run the onboarding.**
    ```bash
    jobwright init
    ```
-   It detects the platform (and your CLI profile, jobs directory, ticket prefixes), asks **at most
-   5 questions** with the detected values pre-filled, and writes `jobwright.config.yaml` — plus your
-   CLI profile name to `jobwright.config.local.yaml`, which is yours and gitignored (a profile name is
-   per-machine, so it never goes in the committed file). Everything
-   not asked ships as a **commented default** in the file — edit anytime. The config is validated
-   before it is written, including the interdependent keys (where job definitions live depends on
-   how the platform deploys), so a broken combination is rejected with a clear error instead of
-   surfacing later.
-4. `jobwright init` also writes the repo's `.claude/settings.json` (marketplace + enabled
-   plugin + `autoUpdate`) so jobwright travels with the repo. **Tell the user to commit it** —
-   writing the file is not the same as their team getting it. It merges rather than clobbers,
-   and it reports rather than overwrites when an entry already conflicts. Pass
-   `--no-claude-settings` if they'd rather manage that file themselves; run
-   `jobwright configure-claude` on its own to add or repair it later.
-5. Verify: `jobwright doctor`. A missing platform CLI is **not** fatal — every file-based check
-   (validation, catalog, compliance scan) still works; doctor names exactly what the live steps
-   (diff, run status) would need. Degrade, don't die.
-6. Build the catalog: `jobwright jobs-index` (writes `JOBS.md` + `OBJECTS.md`).
-7. Optional rulebook: `jobwright gen-agents` — writes `AGENTS.jobwright.md` by default so an
-   existing `AGENTS.md` is never overwritten; pass `-o AGENTS.md` only when the repo has none.
-8. Human-facing README: `jobwright gen-readme` — a short page on what the repo is and how work
-   moves through it. Writes `README.md` when the repo has none, otherwise `README.jobwright.md` for
-   the person to merge; it never overwrites an existing README.
+   Interactive: confirm the five detected answers (platform, CLI profile name, jobs directory,
+   ticket prefixes, warehouse dialect). A shell with no terminal takes the detected proposal
+   (`--yes`). Never pass `--force` unless the user asked to start over — it replaces the team's
+   config.
+3. **Relay the Setup report** it prints, as is. Then add the three things the report cannot know:
+   - the `commit` line is a suggestion, not something that happened — until the user commits
+     `.claude/settings.json` and the rest, jobwright lives on this machine only;
+   - the deploy-safety guard and the session banner switch on from the *next* session (hooks gate
+     on the config existing at session start), so do not describe a banner nobody has seen;
+   - if `install-precommit` is listed under "not run", say what it does and let the user decide:
+     it writes into the git hooks directory every linked worktree shares.
+4. **Docs debt is debt, not failure.** "N of M jobs have no claude.md yet" is expected on
+   adoption. Do not start documenting jobs from here — `/start-job` documents each job the first
+   time it is touched.
 
-## Done when
+## Halts (each names its fix)
 
-`jobwright doctor` is green (or degraded only on live-CLI reachability), `JOBS.md` exists, and
-`.claude/settings.json` is written **and staged for commit**. The deploy-safety guard and the
-session-start banner activate from the *next* session (hooks gate on the config file existing at
-session start) — say so, rather than claiming a banner nobody has seen yet. Next step: `/start-job <ticket>`.
+- `config invalid: …` — the existing config is broken; fix the named key, or (ask first)
+  `jobwright init --force` to start over.
+- `doctor ERROR — …` — a configured path points nowhere or two keys disagree; the message says
+  which. Fix it and re-run `jobwright init`.
+- The CLI still fails after step 1 — `uv` or `pipx` is missing; `jobwright doctor` names which.
+
+## Next
+
+`/start-job <ticket>` — the front door. (Repos that vendor `deploy_safety.py` under
+`.claude/hooks/` keep working alongside the plugin; leave the vendored copy unless asked.)

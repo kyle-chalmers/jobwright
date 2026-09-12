@@ -19,9 +19,13 @@ Static compliance scan driven by the `architecture` config block. No database co
 2. Read the findings. Two kinds:
    - **deprecated** — a reference to a schema being migrated away from. Migration debt; includes a replacement hint when configured.
    - **layer-violation** — a job that declares its layer references a schema its layer is not allowed to. This is a real compliance break.
-3. For a migration sweep, also consult `jobs/OBJECTS.md` (run `jobwright jobs-index` first) to see every job that touches a given object before changing it.
+3. For a migration sweep, also consult `<jobs_dir>/OBJECTS.md` (`jobwright jobs-index --check` first; regenerate if stale) to see every job that touches a given object before changing it.
 4. Propose fixes that replace deprecated references with the configured target objects. Do not edit business logic beyond the reference swap without confirming.
 
 ## Done when
 
 The scan is clean, or the remaining findings are captured as migration follow-ups with their target replacements identified.
+
+## Next
+
+One ticket per affected job (or one migration ticket listing them): `/start-job <ticket>` plans the reference swap against that job's code and gates it; `/safe-deploy <job>` ships it. `/setup` also reports this debt count on adoption.

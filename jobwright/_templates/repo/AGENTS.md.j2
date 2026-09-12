@@ -37,6 +37,7 @@ Every notebook needs a header with: {{ cfg.governance.header_required | join(", 
 
 ## Workflow
 
+- `/start-job <ticket>` is the front door (recall → plan → document → validate); `/safe-deploy <job>` is the only deploy path; `/triage-failure <job>` for a failed run.
 - `jobwright jobs-index` — regenerate the catalog; recall prior work before building.
 - `jobwright validate-job <folder>` — the PASS/FAIL gate before a PR.
 - `jobwright check architecture <path>` — compliance / migration scan.

@@ -1,0 +1,9 @@
+## jobwright — how jobs are governed here
+
+This repo's jobs are governed by [jobwright](https://github.com/kyle-chalmers/jobwright); config in `jobwright.config.yaml`.
+
+- **Start every job at `/start-job <ticket>`.** It recalls prior work from the catalog, documents the job from its code, validates it, and routes to deploy. A failed run starts at `/triage-failure <job>`.
+- **Deploy only through `/safe-deploy <job>`.** It validates first and diffs live-vs-repo; never reset a job from a repo definition without that diff.
+- **`{{ catalog_dir }}JOBS.md`, `{{ catalog_dir }}OBJECTS.md`{% if graph_notes %}, `{{ catalog_dir }}graph/`, `{{ catalog_dir }}objects/`{% endif %} are generated** by `jobwright jobs-index`. Never hand-edit them; commit them with the job docs that changed.
+- Every job folder carries a `claude.md` ({{ required | join(", ") }}); `jobwright validate-job <folder>` is the gate CI runs.
+- Something off? `jobwright doctor`.

@@ -264,6 +264,7 @@ def compose_config(
         f"  key_prefixes: [{prefixes}]      # job folders look like {(key_prefixes or ['JOB'])[0]}-123_My_Job",
         f"  jobs_dir: {jobs_dir}",
         '  # ticket_url_template: "https://example.atlassian.net/browse/{id}"   # linkifies tickets in JOBS.md',
+        "  # graph_notes: true            # Obsidian graph layer (graph/ + objects/) next to JOBS.md; false to skip",
         "",
         "platform:",
         f"  kind: {kind}",
