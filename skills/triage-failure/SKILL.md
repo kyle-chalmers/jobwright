@@ -9,7 +9,7 @@ allowed-tools: [Bash, Read, Edit]
 
 ## Steps
 
-1. Pull the failing run's output and state through the platform adapter (run id, terminal state, and logs/error). Identify which task failed.
+1. Pull the failing run's output and state through the platform adapter (run id, terminal state, and logs/error). `jobwright runs <job>` shows whether a retry is already in flight. Identify which task failed.
 2. Classify the failure: transient/infra, upstream-data, config, or a genuine code bug. Lean on the error text and the run state.
 3. Read the job's `claude.md` (especially Known Issues / Troubleshooting) and the failing code path for context.
 4. Recall related work: grep `JOBS.md` / `OBJECTS.md` for other jobs touching the same objects, in case the cause is shared.

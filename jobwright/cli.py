@@ -157,6 +157,53 @@ def diff_job(
     raise typer.Exit(1)
 
 
+@app.command("runs")
+def runs_cmd(
+    ref: str = typer.Argument(..., help="ticket / job name / folder (e.g. JOB-1234 or JOB-1234_Revenue)"),
+    fmt: str = typer.Option("md", "--format", help="md|json"),
+) -> None:
+    """List the job's ACTIVE runs — the gate before a trigger or deploy.
+
+    Exit 0: none in flight. Exit 1: at least one is. Exit 3: this platform has no run registry,
+    so check by hand (the message says how) before going on. Exit 2: the lookup itself failed.
+    """
+    import json
+
+    from .platforms import ManualFallback, get_adapter
+
+    _check_fmt(fmt)
+    cfg, root = _load()
+    adapter = get_adapter(cfg.platform.kind, profile=cfg.platform.profile, config=cfg, root=root)
+    try:
+        active = adapter.list_active_runs(ref)
+    except ManualFallback as exc:
+        # Unknown is not clear: a distinct exit code, so a script cannot mistake it for "none".
+        if fmt == "json":
+            typer.echo(json.dumps({"status": "manual_required", "runs": [], "message": str(exc)}, indent=2))
+        else:
+            typer.secho(f"~ cannot list runs for '{adapter.kind}' programmatically — {exc}", fg=typer.colors.YELLOW)
+            typer.echo("  Check by hand and confirm nothing is in flight before you trigger or deploy.")
+        raise typer.Exit(3) from None
+    except Exception as exc:
+        typer.secho(f"runs lookup failed: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from None
+
+    status = "active" if active else "clear"
+    if fmt == "json":
+        typer.echo(json.dumps({
+            "status": status,
+            "runs": [{"run_id": a.run_id, "state": a.state, "started": a.started} for a in active],
+        }, indent=2))
+    elif not active:
+        typer.secho(f"✓ no active runs for {ref}.", fg=typer.colors.GREEN)
+    else:
+        typer.secho(f"⚠ {len(active)} active run(s) for {ref}:", fg=typer.colors.YELLOW)
+        for a in active:
+            typer.echo(f"  {a.run_id}  {a.state}  started {a.started or '—'}")
+        typer.secho("Do not trigger or deploy while a run is in flight — wait, or cancel it first.", fg=typer.colors.RED)
+    raise typer.Exit(1 if active else 0)
+
+
 def _stdin_is_tty() -> bool:
     """Separate so tests can drive the interactive path (CliRunner stdin is never a tty)."""
     return sys.stdin.isatty()

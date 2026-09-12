@@ -80,11 +80,18 @@ class AirflowAdapter(JobPlatformAdapter):
         )
 
     def list_active_runs(self, ref: str) -> list[ActiveRun]:
-        data = self._cli_json("dags", "list-runs", "-d", ref, "--state", "running")
-        out = []
-        for r in data or []:
-            out.append(ActiveRun(run_id=r.get("run_id", r.get("dag_run_id", "")),
-                                 state=r.get("state", "running"), started=r.get("start_date")))
+        # A queued DAG run is as "active" as a running one: triggering again duplicates it, and a
+        # deploy lands under it. `--state` takes one value, so ask twice and merge.
+        out: list[ActiveRun] = []
+        seen: set[str] = set()
+        for state in ("running", "queued"):
+            data = self._cli_json("dags", "list-runs", "-d", ref, "--state", state)
+            for r in data or []:
+                rid = r.get("run_id", r.get("dag_run_id", ""))
+                if rid in seen:
+                    continue
+                seen.add(rid)
+                out.append(ActiveRun(run_id=rid, state=r.get("state", state), started=r.get("start_date")))
         return out
 
     def deploy(self, def_path: str, env: str, ref: str | None = None) -> dict:
