@@ -25,13 +25,19 @@ The deploy-safety guard backstops you at the command level, but run the flow del
    ```bash
    jobwright diff-job <job>
    ```
-   - If the platform deploys straight from git, `diff-job` says so — review `git diff` instead
-     and skip to step 5.
+   - If the platform deploys straight from git, `diff-job` says so — review `git diff` instead,
+     then continue at step 3 (the run check and the side-effect confirmation still apply).
    - If it reports **drift**, STOP. The repo does not match live; deploying now would overwrite
      live state. Surface the diff and reconcile (update the repo from live, or confirm the change
      is intended) before going further.
-3. **Check for active runs** before any trigger, to avoid duplicate runs and clobbering in-flight
-   work.
+3. **Check for active runs** before any trigger or definition change:
+   ```bash
+   jobwright runs <job>
+   ```
+   Exit 0: clear. Exit 1: a run is in flight — wait or cancel it first; deploying over it
+   clobbers in-progress work and a re-trigger duplicates it. Exit 3: this platform has no run
+   registry — do the manual check the message describes and get the user's explicit "nothing is
+   running" before going on; unknown is not clear.
 4. **Confirm side-effects.** Name any downstream effects (file delivery, emails, partner uploads)
    and get explicit approval.
 5. **Deploy.** Run the platform's deploy/update command. The deploy-safety guard prompts before

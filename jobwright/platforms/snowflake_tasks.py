@@ -118,9 +118,18 @@ class SnowflakeTasksAdapter(JobPlatformAdapter):
 
     def list_active_runs(self, ref: str) -> list[ActiveRun]:
         _check_ref(ref)
-        task_name = ref.split(".")[-1]  # TASK_HISTORY TASK_NAME wants the bare name
+        parts = ref.split(".")
+        task_name = parts[-1]  # TASK_HISTORY TASK_NAME wants the bare name
+        # INFORMATION_SCHEMA is per database: a bare `INFORMATION_SCHEMA.TASK_HISTORY` only works
+        # when the session already has that database in use, which a configured CLI profile need
+        # not. A fully qualified ref (DB.SCHEMA.TASK) lets us name it; a bare ref relies on the
+        # profile's default database, as before.
+        fn = f"{parts[0]}.INFORMATION_SCHEMA.TASK_HISTORY" if len(parts) == 3 else "INFORMATION_SCHEMA.TASK_HISTORY"
+        # Only EXECUTING counts as active. SCHEDULED rows exist for every scheduled task's next
+        # tick, and `EXECUTE TASK` / `ALTER TASK` replace that instance rather than collide with
+        # it — counting them would make every scheduled task permanently "busy".
         q = (
-            "SELECT QUERY_ID, STATE, SCHEDULED_TIME FROM TABLE(INFORMATION_SCHEMA.TASK_HISTORY("
+            f"SELECT QUERY_ID, STATE, SCHEDULED_TIME FROM TABLE({fn}("
             f"TASK_NAME => '{task_name.replace(chr(39), chr(39) * 2)}')) WHERE STATE = 'EXECUTING'"
         )
         rows = self._snow_json(q)

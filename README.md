@@ -81,6 +81,9 @@ Five skills, one front door. Every one ends by naming the next command.
 - **A validation gate a deploy can't skip.** `/safe-deploy` runs `jobwright validate-job` before
   anything touches the platform; the same gate runs in `/start-job` and CI. A job that predates
   jobwright and has no docs yet is routed to `/start-job`, which drafts them from the code.
+- **No deploy over a running job.** `jobwright runs <job>` lists active runs and exits 1 when any
+  are in flight (3 when the platform has no run registry, so you check by hand); `/safe-deploy`
+  checks it before a trigger or a definition change.
 - **Drift detection before overwrite.** `jobwright diff-job` compares the live definition to the
   repo's before a deploy, because repo files go stale, and a stale reset has broken production
   jobs. On platforms that deploy straight from git it says so and points at `git diff`.
@@ -133,7 +136,7 @@ The plugin runs these for you; they matter for CI, scripting, and repos without 
 
 ```
 jobwright init [--yes] [--force] [--config-only] [--precommit] | doctor | jobs-index [--check]
-          validate-job <folder> [--offline] | diff-job <job> | new-job <ticket> "<name>"
+          validate-job <folder> [--offline] | diff-job <job> | runs <job> | new-job <ticket> "<name>"
           check {syntax|job-defs|deps|architecture|docs} [paths]
           gen-agents [--full] | gen-readme | configure-claude | install-precommit | install-shim
 ```

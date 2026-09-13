@@ -3,6 +3,34 @@
 All notable changes to jobwright are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions follow semver.
 
+## [0.5.1] — 2026-09-12
+
+The follow-up the 0.5.0 review left open.
+
+### Added
+- **`jobwright runs <job>`** lists a job's active runs through the platform adapter and exits 1
+  while any is in flight, 0 when clear. `/safe-deploy` step 3 ("check for active runs") had no
+  verb behind it — the adapter's `list_active_runs` existed since Phase 0 but nothing exposed it,
+  so the skill asked for a check jobwright could not run. On a platform with no run registry the
+  command says how to check by hand and exits **3** — unknown is not clear, so a script cannot
+  mistake it for "none" **[review]**. `--format json` prints `{"status": clear|active|manual_required,
+  "runs": [...]}`.
+
+### Fixed
+- **Airflow counted only running DAG runs as active.** **[review]** A queued run duplicates on
+  re-trigger just the same; the adapter now asks for `running` and `queued` and merges them.
+- **Snowflake Tasks queried an unqualified `INFORMATION_SCHEMA.TASK_HISTORY`,** which only works
+  when the session already has that database in use. **[review]** A fully qualified task ref now
+  names `<DB>.INFORMATION_SCHEMA.TASK_HISTORY`. Only `EXECUTING` counts as active, on purpose:
+  `SCHEDULED` rows exist for every scheduled task's next tick and would make every task look busy.
+- **`/safe-deploy` on a git-synced platform skipped from the drift step straight to deploy,**
+  **[review]** bypassing the run check and the side-effect confirmation; it now continues at step 3.
+
+### Docs
+- The plugin cache is keyed by version (`~/.claude/plugins/cache/jobwright/jobwright/<version>/`),
+  so a removed skill cannot linger after an update — each release lands in its own directory.
+  The 0.5.0 note about `/reload-plugins` stands only as a belt-and-braces hint.
+
 ## [0.5.0] — 2026-09-11
 
 Onboarding, redesigned from the two real adoptions and the transcripts they left behind. One repo

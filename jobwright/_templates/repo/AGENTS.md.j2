@@ -42,3 +42,4 @@ Every notebook needs a header with: {{ cfg.governance.header_required | join(", 
 - `jobwright validate-job <folder>` — the PASS/FAIL gate before a PR.
 - `jobwright check architecture <path>` — compliance / migration scan.
 - `jobwright diff-job <job>` — live-vs-repo drift before any deploy.
+- `jobwright runs <job>` — active runs; exit 1 means do not trigger or deploy yet.
