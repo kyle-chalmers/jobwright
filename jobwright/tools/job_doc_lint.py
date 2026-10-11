@@ -3,7 +3,9 @@
 
 Checks each job folder has a ``claude.md`` carrying the required ``**Field**:`` lines
 (``governance.claude_md_required``) and that at least one notebook carries the required
-``# FIELD:`` header lines (``governance.header_required``).
+``# FIELD:`` header lines (``governance.header_required``). When the doc keeps a ``## Log``,
+its last entry must name the next command (``Next: ...``), so whoever opens the job next can
+resume it without asking. A doc with no Log, or an empty one, passes: adoption stays green.
 
 Usage: job_doc_lint.py [--format md|json] JOB_DIR [JOB_DIR ...]
 Exit 0 if all complete, 1 if any missing fields, 2 on error.
@@ -18,6 +20,37 @@ from pathlib import Path
 
 from ..config import ConfigError, load_config
 
+_LOG_HEADING = re.compile(r"^##\s+Log\s*$", re.MULTILINE)
+# a jobwright Log entry: top-level, dated, and naming the skill that wrote it
+_LOG_ENTRY = re.compile(r"^- \d{4}-\d{2}-\d{2}: .*\(/[\w-]+\)")
+_SKILL_MARKER = re.compile(r"\(/[\w-]+\)")
+# the handoff follows the entry's own skill marker, so a command quoted in the description
+# cannot stand in for a missing one
+_HANDOFF = re.compile(r"[.,;]?\s*Next:\s*/[\w-]+")
+
+
+def log_problem(text: str) -> str | None:
+    """The resume-log rule: the last jobwright entry under ``## Log`` names the next command.
+
+    Only entries in jobwright's own shape (``- YYYY-MM-DD: what (/skill). Next: /command``)
+    count, so a team's hand-written log, sub-bullets, later sections, or a Log shown as an
+    example inside a comment or code fence never turn a job red.
+    """
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)  # incl. the template's example line
+    text = re.sub(r"^```.*?^```", "", text, flags=re.DOTALL | re.MULTILINE)
+    m = _LOG_HEADING.search(text)
+    if not m:
+        return None
+    section = re.split(r"^#{1,6}\s", text[m.end():], maxsplit=1, flags=re.MULTILINE)[0]
+    entries = [ln for ln in section.splitlines() if _LOG_ENTRY.match(ln)]
+    if not entries:
+        return None
+    last = entries[-1]
+    marker = list(_SKILL_MARKER.finditer(last))[-1]
+    if not _HANDOFF.match(last, marker.end()):
+        return "claude.md Log: the last entry must name the next command (`Next: /<command> ...`)"
+    return None
+
 
 def lint_job(job_dir: Path, claude_md_required, header_required) -> list[str]:
     """Return a list of human-readable problems for one job folder (empty = clean)."""
@@ -30,6 +63,8 @@ def lint_job(job_dir: Path, claude_md_required, header_required) -> list[str]:
         for fld in claude_md_required:
             if not re.search(rf"^\*\*{re.escape(fld)}\*\*:\s*\S", text, re.MULTILINE):
                 problems.append(f"claude.md missing **{fld}**")
+        if (lp := log_problem(text)):
+            problems.append(lp)
 
     py_files = sorted(job_dir.glob("*.py"))
     if header_required and py_files:

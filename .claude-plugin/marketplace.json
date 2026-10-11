@@ -6,7 +6,7 @@
     {
       "name": "jobwright",
       "source": "./",
-      "description": "A jobs index, architecture-compliance scanning, a live-vs-repo deploy-safety guard, and per-job validation for Databricks / Airflow / dbt / Snowflake Tasks job repos."
+      "description": "A jobs catalog, architecture-compliance scanning, a live-vs-repo deploy-safety guard, and per-job validation for Databricks / Airflow / dbt / Snowflake Tasks job repos."
     }
   ]
 }

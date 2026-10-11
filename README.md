@@ -24,6 +24,18 @@ deployable artifacts with a governed lifecycle: a catalog you recall before you 
 per-job validation gate, architecture-compliance scanning, and a deploy-safety guard that pauses
 before destructive commands, so a stale-definition overwrite cannot happen unattended.
 
+### This is for you if
+
+- ✅ Your team keeps production data jobs in a git repo and ships changes to them every week.
+- ✅ A job has been "fixed" in the orchestrator's UI and later overwritten by an older repo copy.
+- ✅ New teammates (or agents) can't tell what a job does, who owns it, or what it touches.
+- ✅ You want every deploy checked the same way, whether a person or Claude runs it.
+- ❌ You want a scheduler or orchestrator. jobwright runs on top of the one you have.
+- ❌ You want jobs deployed with no human in the loop. Every destructive step asks first.
+
+New to the vocabulary (catalog, drift, adapter, migration debt)? [docs/concepts.md](docs/concepts.md)
+defines each in a few plain sentences.
+
 ## Install
 
 jobwright is a **Claude Code plugin** that installs **per project**: one repo, one team, one set
@@ -55,10 +67,62 @@ written, the exact `git add` line, how many jobs lack docs (reported as debt, no
 `Next: /start-job <ticket>`. It works the same on an empty repo and on a repo already full of
 jobs; re-running it on a configured repo keeps the config and completes whatever is missing.
 
+Here is the Setup report from [`examples/sample-databricks`](examples/sample-databricks), a
+repo with one job, on a machine with the orchestrator CLI and a saved profile installed but
+without the `jobwright` shim:
+
+```
+Setup report
+  platform   databricks · deploys: api-reset · jobs in jobs/
+  this run   jobwright.config.yaml, .gitignore, .claude/settings.json, jobs/JOBS.md, jobs/OBJECTS.md, jobs/graph, jobs/objects, AGENTS.md, README.md
+  commit     git add jobwright.config.yaml .gitignore .claude/settings.json jobs/JOBS.md jobs/OBJECTS.md jobs/graph jobs/objects AGENTS.md README.md
+  estate     1 job catalogued
+  docs       every job has a claude.md
+  doctor     DEGRADED — `jobwright` is not on PATH — terminals (and git hooks) can't call it; `jobwright install-shim` fixes that once per machine.
+  not run    jobwright install-precommit — stages the regenerated catalog into commits that touch job folders (writes to the shared git hooks dir, so it is opt-in)
+             jobwright install-shim — puts `jobwright` on PATH for terminals and git hooks (once per machine; never from init)
+
+Next: /start-job <ticket>   (the deploy-safety guard and session banner switch on from the next session)
+```
+
+DEGRADED means every file-based check works and one optional piece is missing, named with its
+fix (here, `jobwright install-shim`); you can start work while DEGRADED. Before the report,
+`init` asks up to five questions, and each explains what it controls and where its default came
+from. The guard and the session banner start with your next Claude Code session.
+
+`jobwright doctor` on the same machine (paths and the profile name shortened):
+
+```
+✓ config: ./jobwright.config.yaml
+  platform.kind     = databricks
+  platform.profile  = prod (jobwright.config.local.yaml)
+  deploy_model      = api-reset
+  warehouse.dialect = snowflake
+  jobs_dir          = jobs
+  key_prefixes      = JOB
+  deprecated_deny   = (none)
+✓ adapter: DatabricksAdapter (deploy_model=api-reset)
+✓ `databricks` on PATH
+~ `jobwright` is not on PATH — terminals (and git hooks) can't call it; `jobwright install-shim` fixes that once per machine.
+doctor: DEGRADED — file-based checks work; see the ~ lines for what the live steps need.
+```
+
 `/start-job` then owns the lifecycle. It recalls prior work from the catalog, detects whether
 the job is new or in flight, drafts its documentation *from the code*, states the plan, asks one
 consolidated question, and only after your approval scaffolds or edits, gates the job with
 `jobwright validate-job`, and routes to `/safe-deploy`.
+
+### How work moves
+
+| Step | Command | What happens |
+|---|---|---|
+| **Open** | `/start-job <ticket>` | recalls prior work on the same tables, plans against the ticket with the job's docs drafted from the code, one approval |
+| **Build** | (same command) | scaffolds or resumes the job, then gates it with `validate-job`, the same checks CI runs |
+| **Deploy** | `/safe-deploy <job>` | re-runs the gate, compares the live job with the repo, checks nothing is running, confirms side effects (emails, file deliveries), then deploys |
+| **Fix** | `/triage-failure <job>` | turns a failed run into a plain cause and a scoped fix, then routes back through Open and Deploy |
+
+Every skill narrates as it goes: one line saying what a phase does and whether it will ask
+anything, one line per result, and the next command at the end.
 
 ## The skills
 
@@ -89,6 +153,22 @@ Five skills, one front door. Every one ends by naming the next command.
   jobs. On platforms that deploy straight from git it says so and points at `git diff`.
 - **Graceful degradation.** No platform CLI on PATH? Every file-based check still works;
   `jobwright doctor` reports OK, DEGRADED (with what the live steps need) or ERROR.
+
+## What Claude can and can't see
+
+- **jobwright adds no access.** Claude sees what any Claude Code session in this repo sees: the
+  files, and the output of the commands it runs.
+- **No credentials in jobwright's files.** The config holds names only. Your orchestrator CLI
+  profile *name* sits in `jobwright.config.local.yaml`, which is gitignored. The token stays in
+  that CLI's own config; setup keeps only the profile names from it, to offer a default.
+- **Live steps run as you, through your own CLI.** `diff-job` and `runs` call your
+  orchestrator's CLI with your saved login. Claude sees what those commands print (a job
+  definition, a run's state), not the login.
+- **The checks read code, not your warehouse.** The validation gate, the architecture scan and
+  the catalog never connect to your warehouse. The one exception is an orchestrator that lives
+  inside the warehouse (Snowflake Tasks): its live steps query task state through your own CLI.
+- **The guard is a backstop, not a sandbox.** It recognizes known destructive commands and asks
+  first; a command it does not recognize runs normally. `/safe-deploy`'s steps are the real gate.
 
 ## Hooks, in full
 

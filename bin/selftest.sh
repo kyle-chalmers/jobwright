@@ -62,7 +62,7 @@ echo "==> skill surface (5 skills)"
 for s in setup start-job safe-deploy triage-failure architecture-audit; do
   [ -f "skills/$s/SKILL.md" ] || { echo "FAIL: missing skill: $s"; exit 1; }
 done
-extra="$(ls -d skills/*/ | grep -Ev '/(setup|start-job|safe-deploy|triage-failure|architecture-audit)/$' || true)"
+extra="$(ls -d skills/*/ | grep -Ev '/(setup|start-job|safe-deploy|triage-failure|architecture-audit|_shared)/$' || true)"
 [ -z "$extra" ] || { echo "FAIL: unexpected skill folder (retired leftover?): $extra"; exit 1; }
 # every skill ends by naming the next one — a skill that stops without a handoff is unfinished
 for f in skills/*/SKILL.md; do
@@ -75,5 +75,11 @@ grep -q 'validate-job' skills/safe-deploy/SKILL.md \
   || { echo "FAIL: safe-deploy no longer runs the validation gate"; exit 1; }
 grep -qi 'guard is ACTIVE' hooks/session_start.sh \
   || { echo "FAIL: session_start.sh no longer announces the deploy-safety guard"; exit 1; }
+# the explanatory layer: every skill points at the narration rules and the plain-language terms
+# (the finer prose rules live in tests/test_skill_prose.py, which pytest ran above)
+for f in skills/*/SKILL.md; do
+  grep -q '_shared/narrate.md' "$f" || { echo "FAIL: $f does not link skills/_shared/narrate.md"; exit 1; }
+  grep -q 'docs/concepts.md' "$f" || { echo "FAIL: $f does not link docs/concepts.md"; exit 1; }
+done
 
 echo "OK: jobwright selftest passed"

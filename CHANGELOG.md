@@ -3,6 +3,50 @@
 All notable changes to jobwright are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions follow semver.
 
+## [Unreleased]
+
+jobwright onboarded fast but explained little. A new teammate met catalog, drift, adapter and
+migration debt before anything defined them (the only definitions sat in a contributor doc), the
+skills ran without telling the person what each step was for, and `/triage-failure` handed back
+raw error text. This release adds the explanatory layer StreamSnow grew after the two kits split
+from the same design.
+
+### Added
+- **`docs/concepts.md`**: every jobwright term in a few plain sentences, plus the "How work
+  moves" table that until now only adopters' generated READMEs carried. Every skill links it.
+- **A narration contract** (`skills/_shared/narrate.md`): open each phase with one line saying
+  what it does and whether it will ask, one line of what and why before each action and one of
+  the result after, define a term on first use, and close with the next command. Every skill
+  links it.
+- **A failure translator for `/triage-failure`** (`skills/triage-failure/translate.md`): error
+  signature to plain cause, class and fix, reported in a five-line block that ends with
+  "Data partially written? yes | no | unknown". An unrecognized error is reported verbatim and
+  never guessed at.
+- **A resume log in each job doc.** New `claude.md` files carry a `## Log`; `/start-job` and
+  `/triage-failure` append one dated line per session, and the last line names the next command.
+  The documentation check fails only a jobwright-format Log line (`- YYYY-MM-DD: ... (/skill)`)
+  whose last entry has no `Next: /command`. A doc with no Log, or a team's own hand-written
+  Log, still passes, so no existing job turns red.
+- **README:** "This is for you if", a real Setup report from `examples/sample-databricks`, the
+  "How work moves" table, and "What Claude can and can't see".
+- **Prose tests** (`tests/test_skill_prose.py`, and two gate lines in `bin/selftest.sh`): every
+  skill links the narration rules and the concepts page, stays under 80 body lines, carries no
+  "formerly" or "ported from" history, and every relative link resolves.
+
+### Changed
+- **`jobwright init` explains each question before asking it**: what the answer controls, where
+  it can be changed later, and where the offered default came from (detected, read from your
+  folder names, or a placeholder). The warehouse question now says plainly that jobwright never
+  connects to the warehouse.
+- **`/triage-failure` and `/architecture-audit` give the reason for each step**, not just the step.
+- **The session banner's two lines are shorter**: the front door and the failure path, then the
+  guard. The CLI verb list moved out; it is `jobwright --help`.
+- The marketplace description says "catalog", the term everything else uses.
+
+### Removed
+- Maintainer history from skill text ("Ported from ticketwright's /ship Phase C", "formerly
+  /document-job"). The CHANGELOG keeps it.
+
 ## [0.5.1] — 2026-09-12
 
 The follow-up the 0.5.0 review left open.

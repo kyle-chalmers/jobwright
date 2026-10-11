@@ -219,6 +219,16 @@ def _ask(label: str, default: str, check) -> str:
             typer.secho(f"  {exc}", fg=typer.colors.RED)
 
 
+def _explain(what: str, source: str) -> None:
+    """Before a setup question: what the answer controls, and where the offered default came from.
+
+    Detection proposes, the user confirms; the confirmation only means something when the user
+    can see what they are confirming and why that value was offered.
+    """
+    typer.secho(f"    {what}", dim=True)
+    typer.secho(f"    offered: {source}", dim=True)
+
+
 def _finish_setup(root: Path, cfg, *, claude_settings: bool, precommit: bool, written: list[str]) -> None:
     """The steps after the config exists, then the one-screen report. Shared by both init modes."""
     from . import onboarding
@@ -306,6 +316,13 @@ def init(
     if interactive:
         # The whole interview: 5 questions, every answer pre-filled from detection and
         # validated on the spot (a bad answer re-asks that question, not the wizard).
+        # Each is explained first: what it controls, the cost of changing it, and the source.
+        _explain(
+            "Which orchestrator runs these jobs. It picks the adapter used for the live checks "
+            "(drift, run status); to change it later, re-run `jobwright init --force`.",
+            "detected from the signals above" if det.evidence
+            else "nothing detected, so this is only a starting point",
+        )
         kind = _ask(
             f"1/5 Platform ({' | '.join(PLATFORM_KINDS)})", kind,
             lambda v: validate_choice(v, PLATFORM_KINDS, "platform.kind"),
@@ -313,10 +330,22 @@ def init(
         if DEPLOY_MODEL_BY_KIND[kind] == "git-sync":
             typer.echo("2/5 CLI profile — skipped (git-synced platform: git is the source of truth).")
         else:
+            _explain(
+                "The name of your orchestrator CLI's saved login, so live checks run as you. "
+                "Stored per machine in jobwright.config.local.yaml (gitignored), never committed.",
+                "found in your local CLI config" if det.profile
+                else "no saved login found; 'prod' is a placeholder name",
+            )
             profile = _ask(
                 "2/5 Platform CLI profile name (never a token)", profile or "prod",
                 lambda v: validate_name(v, "platform.profile"),
             )
+        _explain(
+            "Where job folders live, one folder per job. The catalog and validation scan only "
+            "here; changing it later means moving folders or editing project.jobs_dir.",
+            "job folders were found here" if det.key_prefixes
+            else "no job folders yet; 'jobs' is the convention",
+        )
         jobs_dir = _ask(
             "3/5 Jobs directory (one governed folder per job)", jobs_dir,
             lambda v: validate_relpath(v, "project.jobs_dir"),
@@ -328,7 +357,19 @@ def init(
                 raise ConfigError("give at least one prefix, e.g. JOB")
             return [validate_name(p, "project.key_prefixes[]") for p in parts]
 
+        _explain(
+            "Ticket keys that start job folder names (JOB-123_Name). Folders named otherwise are "
+            "skipped by the catalog and reported. Add more anytime in project.key_prefixes.",
+            "read from your existing job folder names" if det.key_prefixes
+            else "no job folders yet; JOB is a placeholder",
+        )
         prefixes = _ask("4/5 Ticket key prefix(es), comma-separated", ",".join(prefixes), _check_prefixes)
+        _explain(
+            "The warehouse your jobs read and write. Recorded for the team and shown by doctor; "
+            "this setting is never used to connect. Edit warehouse.dialect anytime.",
+            "guessed from the platform and the warehouse tools on this machine"
+            if (det.warehouse or "none") != "none" else "no warehouse tools found",
+        )
         warehouse = _ask(
             f"5/5 Warehouse dialect ({' | '.join(WAREHOUSE_DIALECTS)})", warehouse or "none",
             lambda v: validate_choice(v, WAREHOUSE_DIALECTS, "warehouse.dialect"),

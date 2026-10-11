@@ -14,10 +14,17 @@ agent, and checks the result. It works the same on an empty repo and on a repo f
 was never configured; on a repo that already has a config it keeps that config and completes
 whatever is missing. Nothing that exists is renamed, moved, or overwritten.
 
+Before running anything, tell the user in two lines what is about to happen: what `init` will
+detect, that it asks at most five questions, and which files it writes. Then narrate each step
+and its result ([../_shared/narrate.md](../_shared/narrate.md)). The report uses a few
+jobwright terms (catalog, documentation debt, migration debt, DEGRADED); define each in a few
+words the first time, from [concepts](../../docs/concepts.md).
+
 ## Steps
 
 1. **Reach the CLI.** Run `jobwright version`. If `jobwright` is not found, or it prints a
-   "shadowing the plugin" warning, run
+   "shadowing the plugin" warning (an older `jobwright` earlier on PATH would answer instead of
+   this plugin's), run
    ```bash
    "${CLAUDE_PLUGIN_ROOT}/bin/jobwright-plugin" install-shim
    ```
@@ -32,7 +39,8 @@ whatever is missing. Nothing that exists is renamed, moved, or overwritten.
    jobwright init
    ```
    Interactive: confirm the five detected answers (platform, CLI profile name, jobs directory,
-   ticket prefixes, warehouse dialect). A shell with no terminal takes the detected proposal
+   ticket prefixes, warehouse dialect). Each prompt explains what it controls and where its
+   default came from; if the user asks, add the cost of changing it later. A shell with no terminal takes the detected proposal
    (`--yes`). Never pass `--force` unless the user asked to start over — it replaces the team's
    config.
 3. **Relay the Setup report** it prints, as is. Then add the three things the report cannot know:
