@@ -11,14 +11,14 @@ Each check is `✓` or `✗`:
 - **dependency_vulns** — pinned `%pip install` packages checked against the OSV database.
 - **architecture** — layer-rule violations **fail**; references to schemas being migrated away
   from are reported as non-blocking migration debt.
-- **documentation** — `claude.md` and the notebook header carry every required field.
+- **documentation**: `claude.md` and the notebook header carry every required field, and the
+  last jobwright entry in its `## Log`, if any, names the next command (`Next: /<command>`).
 
 Fix and re-run until PASS. Do not open a PR — and never hand off to `/safe-deploy` — on a FAIL.
 Surface remaining migration debt to the user as a follow-up; it does not block the gate.
 
 ## Where the pieces went
 
-Scaffolding, documenting (formerly `/document-job`) and validation are phases of this skill; the
-catalog (formerly `/build-jobs-index`) is maintained by `/setup`, this skill's Phase 4, and the
-hooks. `jobwright new-job`, `jobwright check docs`, `jobwright jobs-index` and
+Scaffolding, documenting and validation are phases of this skill; the catalog is maintained by
+`/setup`, this skill's Phase 4, and the hooks. `jobwright new-job`, `jobwright check docs`, `jobwright jobs-index` and
 `jobwright validate-job` remain available directly for one-off use.

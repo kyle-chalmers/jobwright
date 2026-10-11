@@ -1,7 +1,8 @@
 # jobwright architecture (contributor doc)
 
 This is where the jargon lives. User surfaces (README, skills, the session banner) speak plain
-language; the model behind them is defined here.
+language; the model behind them is defined here. The plain-language definitions users see are in
+[concepts.md](concepts.md); keep the two in step when a term changes.
 
 ## Two seams
 

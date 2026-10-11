@@ -10,7 +10,9 @@ allowed-tools: [Bash, Read, Edit, Glob, Grep, AskUserQuestion]
 One command owns the job lifecycle: **recall → detect → plan → write and gate → route**.
 Nothing in the job's folder or the catalog is written before the approval in Phase 3 (Phase 0
 may still complete the repo's own setup or put the CLI on PATH), and you never have to remember
-which step comes next.
+which step comes next. Open each phase with one line to the user (what it does, whether it will
+ask) and close it with the result ([../_shared/narrate.md](../_shared/narrate.md)); terms are
+in [concepts](../../docs/concepts.md).
 
 ## Phase 0 — Preflight (degrade, don't die)
 
@@ -25,7 +27,8 @@ which step comes next.
 
 ## Phase 1 — Recall (read-only)
 
-4. `jobwright jobs-index --check`. Stale? Read the existing catalog anyway and say it is stale —
+4. `jobwright jobs-index --check`. The catalog is `JOBS.md` (every job) and `OBJECTS.md` (each
+   table → the jobs that touch it). Stale? Read it anyway and say it is stale:
    regeneration happens in Phase 4; nothing is written before the plan is approved.
 5. Grep `JOBS.md` and `OBJECTS.md` for the ticket, the objects involved, and the owning team. A
    related job exists → prefer extending it over rebuilding, and say so.
@@ -57,6 +60,10 @@ which step comes next.
 11. Apply the approved docs; implement the change.
 12. Gate: `jobwright validate-job <folder>` until PASS ([lifecycle.md](lifecycle.md) lists the
     checks — the same ones CI runs). Then `jobwright jobs-index`, so the catalog shows the job.
+13. Append one line to the `## Log` section of the job's `claude.md` (create the heading if the
+    doc predates it): `- <YYYY-MM-DD>: <what happened> (/start-job). Next: /<command>`, the
+    command from `## Next` below. The last Log line always names the next command, so the
+    next person (or session) resumes without asking; `validate-job` checks it.
 
 ## Next
 

@@ -10,6 +10,8 @@ allowed-tools: [Bash, Read]
 Two rules make this flow safe: a job that fails validation **never deploys**, and a definition
 change is **never** applied from a possibly-stale repo file without a human confirming the diff.
 The deploy-safety guard backstops you at the command level, but run the flow deliberately.
+Narrate each step and its result ([../_shared/narrate.md](../_shared/narrate.md)); terms are in
+[concepts](../../docs/concepts.md).
 
 ## Steps
 
@@ -21,7 +23,9 @@ The deploy-safety guard backstops you at the command level, but run the flow del
    (no `claude.md` yet — common right after adoption) → `/start-job <job>` drafts the docs from
    the code in minutes; any other failure → fix the findings, re-run until PASS. There is no
    override. Deploying an unvalidated job is the exact bypass this step closes.
-2. **Diff live-vs-repo.**
+2. **Diff live-vs-repo.** The job running in the orchestrator can differ from the repo copy
+   (someone edited it in the UI); that difference is **drift**, and deploying over it replaces
+   the live job with an older version.
    ```bash
    jobwright diff-job <job>
    ```
@@ -58,8 +62,7 @@ layer was insufficient** — the config (`jobwright.config.yaml` / architecture 
 a check (`jobwright validate-job` / the deploy-safety guard), or a platform adapter? Propose
 the concrete fix to *that* artifact. If the gap is in jobwright itself, file it against the
 plugin repo (issue or a note the user can act on) rather than patching around it locally.
-Fixing the layer, not the instance, is what compounds. (Ported from ticketwright's /ship
-Phase C.)
+Fixing the layer, not the instance, is what compounds.
 
 ## Next
 
