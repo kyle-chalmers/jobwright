@@ -169,8 +169,16 @@ def find_prod_def(ticket: str, def_dirs: list[Path]) -> dict:
                 spec = json.loads(f.read_text())
             except (OSError, json.JSONDecodeError):
                 continue
+            # A definition that parses but is not the expected shape (a JSON array, a string
+            # schedule) is skipped like an unparsable one: the catalog degrades to the claude.md
+            # values, and `validate-job` is the check that names the bad file.
+            if not isinstance(spec, dict):
+                continue
             settings = spec.get("settings", spec)
-            sched = (settings.get("schedule") or {})
+            if not isinstance(settings, dict):
+                continue
+            sched = settings.get("schedule")
+            sched = sched if isinstance(sched, dict) else {}
             return {
                 "name": settings.get("name"),
                 "cron": sched.get("quartz_cron_expression"),

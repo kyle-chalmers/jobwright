@@ -120,6 +120,28 @@ def test_jobs_index_is_deterministic_and_flags_deprecated_schema():
     assert "ANALYTICS.VW_CUSTOMER" in objects_md  # object reverse-index extraction
 
 
+def test_jobs_index_survives_a_definition_of_the_wrong_shape(tmp_path):
+    # A definition that parses but is not an object (or carries a string schedule) used to raise
+    # AttributeError out of the catalog build: `jobwright jobs-index` crashed, and the PostToolUse
+    # hook silently stopped refreshing the catalog. Degrade, don't die: the row falls back to
+    # claude.md, and validate-job is the check that names the bad file.
+    from jobwright.jobsindex import find_prod_def, render_all
+
+    defs = tmp_path / "defs"
+    defs.mkdir()
+    (defs / "JOB-1_A.json").write_text("[]")
+    (defs / "JOB-2_B.json").write_text('{"name": "B", "schedule": "daily"}')
+    assert find_prod_def("JOB-1", [defs]) == {}
+    assert find_prod_def("JOB-2", [defs]) == {"name": "B", "cron": None, "tz": None, "pause": None}
+
+    for n in ("JOB-1_A", "JOB-2_B"):
+        (tmp_path / "jobs" / n).mkdir(parents=True)
+        (tmp_path / "jobs" / n / "claude.md").write_text(f"# Job: {n}\n\n**Schedule**: by hand\n")
+    out = render_all(tmp_path, {"jobs_dir": "jobs", "key_prefixes": ["JOB"], "def_dirs": ["defs"]})
+    jobs_md = next(txt for p, txt in out.items() if p.name == "JOBS.md")
+    assert "**2 jobs**" in jobs_md and "by hand" in jobs_md
+
+
 # --------------------------------------------------------------------------- #
 # config
 # --------------------------------------------------------------------------- #

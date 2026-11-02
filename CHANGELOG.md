@@ -54,6 +54,10 @@ from the same design.
   `validate-job` then failed. Both now read the configured dirs. The no-argument form also went
   red right after `init` on a fresh repo, because the empty `dev/` folder `init` creates counted
   as an error; an empty definition dir is now skipped.
+- **One malformed job definition crashed the whole catalog.** A definition file that parsed but
+  was not a JSON object (or had a string `schedule`) made `jobwright jobs-index` exit with a
+  traceback, and the PostToolUse hook quietly stopped refreshing `JOBS.md`. That file is now
+  skipped for the catalog (the row falls back to `claude.md`), and `validate-job` still names it.
 
 ## [0.5.1] — 2026-09-12
 
