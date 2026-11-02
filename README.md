@@ -218,7 +218,7 @@ The plugin runs these for you; they matter for CI, scripting, and repos without 
 jobwright init [--yes] [--force] [--config-only] [--precommit] | doctor | jobs-index [--check]
           validate-job <folder> [--offline] | diff-job <job> | runs <job> | new-job <ticket> "<name>"
           check {syntax|job-defs|deps|architecture|docs} [paths]
-          gen-agents [--full] | gen-readme | configure-claude | install-precommit | install-shim
+          gen-agents [--full] | gen-readme | configure-claude | install-precommit | install-shim | version
 ```
 
 ```bash

@@ -67,15 +67,32 @@ def test_no_internal_history_in_user_facing_skill_text():
     assert not leaks, leaks
 
 
-def test_every_relative_link_in_skills_and_concepts_resolves():
+def test_every_relative_link_in_skills_and_docs_resolves():
+    # README and the contributor docs are the first thing a new user opens; a dead link there
+    # costs as much trust as one in a skill.
+    docs = [REPO / "README.md", REPO / "AGENTS.md", REPO / "CONTRIBUTING.md", *(REPO / "docs").glob("*.md")]
     broken = []
-    for p in [*(REPO / "skills").rglob("*.md"), CONCEPTS]:
+    for p in [*(REPO / "skills").rglob("*.md"), *docs]:
         for target in re.findall(r"\]\(([^)#\s]+)(?:#[^)]*)?\)", p.read_text()):
             if "://" in target:
                 continue
             if not (p.parent / target).resolve().exists():
                 broken.append(f"{p.relative_to(REPO)} -> {target}")
     assert not broken, broken
+
+
+def test_readme_cli_block_names_every_verb():
+    # The README's CLI block is the reference for CI and scripting users, who never see a skill.
+    # A verb missing from it is a verb those users do not know exists.
+    from jobwright.cli import app, check_app
+
+    block = re.search(r"^## CLI\n.*?```\n(.*?)```", (REPO / "README.md").read_text(), re.DOTALL | re.MULTILINE)
+    assert block, "README.md has no ## CLI code block"
+    words = set(re.findall(r"[a-z][a-z-]*", block.group(1)))
+    verbs = {c.name or c.callback.__name__.replace("_", "-") for c in app.registered_commands}
+    verbs |= {c.name or c.callback.__name__.replace("_", "-") for c in check_app.registered_commands}
+    verbs |= {g.name for g in app.registered_groups}
+    assert verbs - words == set(), f"README CLI block is missing: {sorted(verbs - words)}"
 
 
 def test_concepts_page_defines_every_glossary_term():
