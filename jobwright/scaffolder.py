@@ -55,10 +55,11 @@ def new_job(cfg, root, ticket: str, name: str, today: str, force: bool = False) 
     prefixes = list(cfg.project.key_prefixes)
     if not is_job_folder(ticket, prefixes):
         if prefixes:
+            own = ticket.rsplit("-", 1)[0]  # the shape check above guarantees KEY-<digits>
             raise ValueError(
                 f"ticket {ticket!r} does not start with a configured key prefix ({', '.join(prefixes)}), "
                 "so the catalog and validate-job would not recognize its folder. Use a ticket like "
-                f"{prefixes[0]}-123, or add its prefix to project.key_prefixes in jobwright.config.yaml."
+                f"{prefixes[0]}-123, or add {own} to project.key_prefixes in jobwright.config.yaml."
             )
         raise ValueError(
             f"ticket {ticket!r} must start with an upper-case key (e.g. JOB-1234) for the catalog "

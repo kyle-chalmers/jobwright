@@ -221,6 +221,10 @@ jobwright init [--yes] [--force] [--config-only] [--precommit] | doctor | jobs-i
           gen-agents [--full] | gen-readme | configure-claude | install-precommit | install-shim | version
 ```
 
+`new-job` refuses a ticket key the catalog could not recognize, and writes nothing when it does.
+In a repo with `key_prefixes: [JOB]`, `jobwright new-job ABC-12 "Revenue"` stops with exit 2 and
+suggests a ticket like `JOB-123` or adding `ABC` to `project.key_prefixes`.
+
 ```bash
 pip install jobwright     # or: uvx jobwright — for CI and machines without Claude Code
 jobwright jobs-index --check

@@ -16,12 +16,12 @@ REGEN_HOOK = REPO / "hooks" / "regenerate_jobs_index.py"
 SESSION_HOOK = REPO / "hooks" / "session_start.sh"
 
 
-def _cfg(jobs_dir="jobs"):
+def _cfg(jobs_dir="jobs", prefixes=("JOB",)):
     from jobwright.config import Config
 
     return Config.from_dict({
         "schema_version": 1,
-        "project": {"key_prefixes": ["JOB"], "jobs_dir": jobs_dir},
+        "project": {"key_prefixes": list(prefixes), "jobs_dir": jobs_dir},
         "platform": {"kind": "databricks", "deploy_model": "api-reset",
                      "job_def_dirs": {"dev": "databricks/job_definitions/dev"}},
         "warehouse": {"dialect": "snowflake"},
@@ -35,14 +35,12 @@ def _cfg(jobs_dir="jobs"):
 def test_scaffolder_rejects_traversal_ticket(tmp_path):
     from jobwright.scaffolder import new_job
 
-    for bad in ("../evil", "JOB/../../etc", "..", "JOB_NoNumber"):
-        try:
+    for bad in ("../evil", "../x", "JOB/../../etc", "..", "JOB_NoNumber", "JOB 12"):
+        with pytest.raises(ValueError, match="key \\+ number"):
             new_job(_cfg(), tmp_path, bad, "x", today="2026-01-01")
-            raise AssertionError(f"expected ValueError for ticket {bad!r}")
-        except ValueError:
-            pass
-    # nothing escaped the tree
+    # nothing escaped the tree, and nothing was written inside it either
     assert not (tmp_path.parent / "evil_x").exists()
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_scaffolder_sanitizes_name_into_valid_python(tmp_path):
@@ -60,11 +58,24 @@ def test_scaffolder_refuses_a_ticket_the_catalog_cannot_see(tmp_path):
     # None"). It now refuses before writing anything and names the fix.
     from jobwright.scaffolder import new_job
 
-    for bad in ("ABC-12", "job-12"):
-        with pytest.raises(ValueError, match="key_prefixes"):
-            new_job(_cfg(), tmp_path, bad, "x", today="2026-01-01")
-    assert not (tmp_path / "jobs").exists()
-    assert not (tmp_path / "databricks").exists()
+    with pytest.raises(ValueError) as exc:
+        new_job(_cfg(), tmp_path, "ABC-12", "x", today="2026-01-01")
+    assert "JOB-123" in str(exc.value) and "add ABC to project.key_prefixes" in str(exc.value)
+    with pytest.raises(ValueError, match="key_prefixes"):
+        new_job(_cfg(), tmp_path, "job-12", "x", today="2026-01-01")
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_scaffolder_with_no_prefixes_requires_an_upper_case_key(tmp_path):
+    # With no key_prefixes the catalog recognizes any upper-case key, so a lower-case one is
+    # refused (nothing written) and the upper-case form scaffolds.
+    from jobwright.scaffolder import new_job
+
+    with pytest.raises(ValueError, match="upper-case key"):
+        new_job(_cfg(prefixes=()), tmp_path, "job-12", "x", today="2026-01-01")
+    assert list(tmp_path.iterdir()) == []
+    res = new_job(_cfg(prefixes=()), tmp_path, "JOB-12", "x", today="2026-01-01")
+    assert res.job_dir.name == "JOB-12_x" and res.job_dir.is_dir()
 
 
 def test_new_job_cli_reports_a_bad_ticket_without_a_traceback(tmp_path, monkeypatch):
