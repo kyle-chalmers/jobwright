@@ -47,6 +47,14 @@ from the same design.
 - Maintainer history from skill text ("Ported from ticketwright's /ship Phase C", "formerly
   /document-job"). The CHANGELOG keeps it.
 
+### Fixed
+- **`jobwright check job-defs` and `validate-job` disagreed on the same file.** The job-name rule
+  in `check job-defs` only looked at the built-in `databricks/job_definitions/` paths, so in a
+  repo with its own `platform.job_def_dirs` it passed a definition with no name that
+  `validate-job` then failed. Both now read the configured dirs. The no-argument form also went
+  red right after `init` on a fresh repo, because the empty `dev/` folder `init` creates counted
+  as an error; an empty definition dir is now skipped.
+
 ## [0.5.1] — 2026-09-12
 
 The follow-up the 0.5.0 review left open.

@@ -53,7 +53,7 @@ def validate(job_dir: Path, cfg, offline: bool = False, root: Path | None = None
     checks.append({"name": "notebook_syntax", "ok": not syntax_errs, "detail": syntax_errs or f"{len(py_files)} file(s) OK"})
 
     # 2) job-definition JSON
-    deployable = tuple(rel.rstrip("/") + "/" for rel in (cfg.platform.job_def_dirs or {}).values())
+    deployable = validate_job_definitions.deployable_dirs(cfg)
     ticket = _ticket_of(job_dir, cfg.project.key_prefixes)
     # The definition artifact format depends on the deploy model: JSON for api-reset,
     # DDL .sql for sql-ddl, none for git-sync (code is the source of truth).
@@ -64,7 +64,7 @@ def validate(job_dir: Path, cfg, offline: bool = False, root: Path | None = None
     def_errs = [
         e for f in def_files
         if f.suffix == ".json"
-        and (e := validate_job_definitions.check_file(str(f), deployable or validate_job_definitions.DEFAULT_DEPLOYABLE_DIRS))
+        and (e := validate_job_definitions.check_file(str(f), deployable))
     ]
     requires_def = deploy_model in ("api-reset", "sql-ddl")
     missing_required = requires_def and not def_files
