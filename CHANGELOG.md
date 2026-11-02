@@ -63,6 +63,10 @@ from the same design.
   stub that the catalog skipped and `validate-job` failed with "missing for None". It now stops
   before writing anything and says to use a configured prefix or add one. A malformed ticket or
   name is reported in one line (exit 2) instead of a Python traceback.
+- **`jobwright diff-job` gave Databricks advice on every platform.** On drift its last line said
+  "Do not `databricks jobs reset` from it", including for Snowflake Tasks, at the exact moment a
+  user has to stop. The warning now says, for any platform, not to deploy from the repo copy until
+  it is reconciled with live, and to re-run `diff-job` after.
 
 ## [0.5.1] — 2026-09-12
 

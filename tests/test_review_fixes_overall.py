@@ -89,3 +89,30 @@ def test_cli_rejects_bad_format(tmp_path):
     proc = subprocess.run(["jobwright", "check", "architecture", ".", "--format", "xml"],
                           cwd=str(tmp_path), capture_output=True, text=True)
     assert proc.returncode == 2, proc.stdout + proc.stderr
+
+
+# --------------------------------------------------------------------------- #
+# diff-job: the drift warning must not name one vendor's command on every platform
+# --------------------------------------------------------------------------- #
+def test_diff_job_drift_warning_is_platform_neutral(tmp_path, monkeypatch):
+    # The drift footer used to say "Do not `databricks jobs reset` from it" even on Snowflake
+    # Tasks, handing a sql-ddl user another platform's command at the moment they must stop.
+    from typer.testing import CliRunner
+
+    from jobwright.cli import app
+    from jobwright.platforms.base import DiffResult
+    from jobwright.platforms.snowflake_tasks import SnowflakeTasksAdapter
+
+    (tmp_path / "defs").mkdir()
+    (tmp_path / "jobwright.config.yaml").write_text(
+        "project:\n  key_prefixes: [JOB]\n  jobs_dir: jobs\n"
+        "platform:\n  kind: snowflake_tasks\n  deploy_model: sql-ddl\n  job_def_dirs: {prod: defs}\n"
+    )
+    drift = DiffResult(drift=True, changed=("ddl",), detail={"ddl": {"repo": "A", "live": "B"}})
+    monkeypatch.setattr(SnowflakeTasksAdapter, "diff_live_vs_repo", lambda self, ref, repo_path=None: drift)
+    monkeypatch.chdir(tmp_path)
+    r = CliRunner().invoke(app, ["diff-job", "DB.SCH.MY_TASK"])
+    assert r.exit_code == 1, r.output
+    assert "DRIFT detected" in r.output
+    assert "does NOT match live" in r.output
+    assert "databricks" not in r.output.lower()

@@ -149,9 +149,12 @@ def diff_job(
         typer.echo(f"  + {key} (live only): {result.detail.get(key, {}).get('live')}")
     for key in result.removed:
         typer.echo(f"  - {key} (repo only): {result.detail.get(key, {}).get('repo')}")
+    # Platform-neutral on purpose: this verb serves every api-reset and sql-ddl adapter, so
+    # naming one vendor's deploy command would hand a Snowflake user Databricks advice.
     typer.secho(
-        "\nThe repo JSON does NOT match live. Do not `databricks jobs reset` from it without "
-        "reconciling — that would overwrite live state.",
+        "\nThe repo definition does NOT match live. Do not deploy from it without reconciling: "
+        "that would overwrite live state. Update the repo from live, or confirm the change is "
+        "intended, then re-run `jobwright diff-job`.",
         fg=typer.colors.RED,
     )
     raise typer.Exit(1)
