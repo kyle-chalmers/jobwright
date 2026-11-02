@@ -47,6 +47,27 @@ from the same design.
 - Maintainer history from skill text ("Ported from ticketwright's /ship Phase C", "formerly
   /document-job"). The CHANGELOG keeps it.
 
+### Fixed
+- **`jobwright check job-defs` and `validate-job` disagreed on the same file.** The job-name rule
+  in `check job-defs` only looked at the built-in `databricks/job_definitions/` paths, so in a
+  repo with its own `platform.job_def_dirs` it passed a definition with no name that
+  `validate-job` then failed. Both now read the configured dirs. The no-argument form also went
+  red right after `init` on a fresh repo, because the empty `dev/` folder `init` creates counted
+  as an error; an empty definition dir is now skipped.
+- **One malformed job definition crashed the whole catalog.** A definition file that parsed but
+  was not a JSON object (or had a string `schedule`) made `jobwright jobs-index` exit with a
+  traceback, and the PostToolUse hook quietly stopped refreshing `JOBS.md`. That file is now
+  skipped for the catalog (the row falls back to `claude.md`), and `validate-job` still names it.
+- **`jobwright new-job` could scaffold a job its own gate then failed.** A ticket whose prefix
+  was not in `project.key_prefixes` (say `ABC-12` in a `JOB` repo) got a folder and a definition
+  stub that the catalog skipped and `validate-job` failed with "missing for None". It now stops
+  before writing anything and says to use a configured prefix or add one. A malformed ticket or
+  name is reported in one line (exit 2) instead of a Python traceback.
+- **`jobwright diff-job` gave Databricks advice on every platform.** On drift its last line said
+  "Do not `databricks jobs reset` from it", including for Snowflake Tasks, at the exact moment a
+  user has to stop. The warning now says, for any platform, not to deploy from the repo copy until
+  it is reconciled with live, and to re-run `diff-job` after.
+
 ## [0.5.1] — 2026-09-12
 
 The follow-up the 0.5.0 review left open.

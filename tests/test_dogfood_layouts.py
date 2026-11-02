@@ -552,3 +552,35 @@ def test_version_ordering_handles_prereleases():
     assert _version_key("0.4.2rc1") < _version_key("0.4.2") and _version_key("0.4.2rc1") > _version_key("0.4.1")
     assert _version_key("0.4") == _version_key("0.4.0")
     assert _version_key("0.5.0-beta.1") > _version_key("0.4.9")
+
+
+def test_check_job_defs_applies_the_name_rule_to_the_configured_dirs(tmp_path, monkeypatch):
+    # The name-presence rule used to match only the built-in databricks/job_definitions/ paths, so
+    # in a repo with its own job_def_dirs `check job-defs` passed a nameless definition that
+    # `validate-job` failed. The two gates now read the same configured dirs.
+    (tmp_path / "JOB-1_A").mkdir()
+    (tmp_path / "job_definitions" / "prod").mkdir(parents=True)
+    (tmp_path / "job_definitions" / "prod" / "JOB-1_A.json").write_text('{"tasks": []}')
+    (tmp_path / "jobwright.config.yaml").write_text(API_RESET_CFG.replace("job_definitions/dev", "job_definitions/prod"))
+    monkeypatch.chdir(tmp_path)
+    for args in (["check", "job-defs"], ["check", "job-defs", "job_definitions/prod/JOB-1_A.json"]):
+        r = CliRunner().invoke(app, args)
+        assert r.exit_code == 1, (args, r.output)
+        assert "missing job name" in r.output, (args, r.output)
+
+
+def test_check_job_defs_default_skips_an_empty_env_dir(tmp_path, monkeypatch):
+    # `init` creates dev/ and prod/ (with a .gitkeep) when it detects no definitions; doctor is
+    # green on that state, so the default `check job-defs` must not go red on it either.
+    for env in ("dev", "prod"):
+        (tmp_path / "job_definitions" / env).mkdir(parents=True)
+        (tmp_path / "job_definitions" / env / ".gitkeep").write_text("")
+    (tmp_path / "jobwright.config.yaml").write_text(API_RESET_CFG)
+    monkeypatch.chdir(tmp_path)
+    r = CliRunner().invoke(app, ["check", "job-defs"])
+    assert r.exit_code == 0, r.output
+    assert "nothing to check" in r.output
+    (tmp_path / "job_definitions" / "prod" / "JOB-1_A.json").write_text('{"name": "A"}')
+    r = CliRunner().invoke(app, ["check", "job-defs"])
+    assert r.exit_code == 0, r.output
+    assert "1 file(s) OK" in r.output

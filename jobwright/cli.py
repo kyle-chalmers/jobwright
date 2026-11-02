@@ -149,9 +149,12 @@ def diff_job(
         typer.echo(f"  + {key} (live only): {result.detail.get(key, {}).get('live')}")
     for key in result.removed:
         typer.echo(f"  - {key} (repo only): {result.detail.get(key, {}).get('repo')}")
+    # Platform-neutral on purpose: this verb serves every api-reset and sql-ddl adapter, so
+    # naming one vendor's deploy command would hand a Snowflake user Databricks advice.
     typer.secho(
-        "\nThe repo JSON does NOT match live. Do not `databricks jobs reset` from it without "
-        "reconciling — that would overwrite live state.",
+        "\nThe repo definition does NOT match live. Do not deploy from it without reconciling: "
+        "that would overwrite live state. Update the repo from live, or confirm the change is "
+        "intended, then re-run `jobwright diff-job`.",
         fg=typer.colors.RED,
     )
     raise typer.Exit(1)
@@ -533,7 +536,11 @@ def new_job_cmd(
     from .scaffolder import new_job
 
     cfg, root = _load()
-    res = new_job(cfg, root, ticket, name, today=date.today().isoformat(), force=force)
+    try:
+        res = new_job(cfg, root, ticket, name, today=date.today().isoformat(), force=force)
+    except ValueError as exc:  # a bad ticket or name: say how to fix it, not a traceback
+        typer.secho(f"✗ {exc}", fg=typer.colors.RED)
+        raise typer.Exit(2) from None
     for p in res.created:
         typer.secho(f"  + {p.relative_to(root)}", fg=typer.colors.GREEN)
     for p in res.skipped:
@@ -767,16 +774,35 @@ def check_job_defs(files: list[str] = typer.Argument(None, help="job-definition 
     """Validate job-definition JSON (parse + name presence in deployable dirs)."""
     from .tools import validate_job_definitions
 
-    if not files:
-        cfg, root = _load()
-        if cfg.platform.deploy_model == "git-sync":
-            typer.echo("not applicable: a git-synced platform deploys code, not job-definition files.")
-            raise typer.Exit(0)
-        files = [str(root / d) for d in cfg.platform.job_def_dirs.values() if (root / d).is_dir()]
-        if not files:
-            typer.secho("no job-definition directories exist yet (platform.job_def_dirs) — nothing to check.", fg=typer.colors.YELLOW)
-            raise typer.Exit(1)
-    raise typer.Exit(validate_job_definitions.main(_expand_dirs(files, ".json")))
+    if files:
+        # Inside a configured repo, the name rule applies to the configured definition dirs, the
+        # same ones validate-job uses. Outside one, the defaults keep the check usable standalone.
+        deployable = validate_job_definitions.DEFAULT_DEPLOYABLE_DIRS
+        if find_config() is not None:
+            cfg, _root = _load()
+            deployable = validate_job_definitions.deployable_dirs(cfg)
+        raise typer.Exit(validate_job_definitions.main(_expand_dirs(files, ".json"), deployable))
+
+    cfg, root = _load()
+    if cfg.platform.deploy_model == "git-sync":
+        typer.echo("not applicable: a git-synced platform deploys code, not job-definition files.")
+        raise typer.Exit(0)
+    dirs = [root / d for d in cfg.platform.job_def_dirs.values() if (root / d).is_dir()]
+    if not dirs:
+        typer.secho("no job-definition directories exist yet (platform.job_def_dirs): nothing to check.", fg=typer.colors.YELLOW)
+        raise typer.Exit(1)
+    # An empty env dir (init creates dev/ and prod/ with a .gitkeep) is a state setup accepted,
+    # not a failure, so the default scan skips it instead of erroring the way an explicit dir does.
+    found = sorted(
+        str(f)
+        for d in dirs
+        for f in d.rglob("*.json")
+        if f.is_file() and not _under_hidden_or_cache(f.relative_to(d))
+    )
+    if not found:
+        typer.echo("no job-definition JSON files yet under platform.job_def_dirs: nothing to check.")
+        raise typer.Exit(0)
+    raise typer.Exit(validate_job_definitions.main(found, validate_job_definitions.deployable_dirs(cfg)))
 
 
 @check_app.command("deps")

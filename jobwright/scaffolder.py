@@ -15,6 +15,8 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
+from .jobsindex import is_job_folder
+
 _TEMPLATES = Path(__file__).parent / "_templates"
 
 # A ticket key like JOB-1234 / DAG-0028 / ABC-42. Deliberately strict — `ticket` flows
@@ -47,6 +49,21 @@ def new_job(cfg, root, ticket: str, name: str, today: str, force: bool = False) 
     if not _TICKET_RE.match(ticket):
         raise ValueError(
             f"ticket {ticket!r} must look like a key + number (e.g. JOB-1234) with no path characters."
+        )
+    # A folder the catalog cannot see is a job nobody can find, and validate-job cannot tie it
+    # to its definition file. Refuse before writing anything, and name the fix.
+    prefixes = list(cfg.project.key_prefixes)
+    if not is_job_folder(ticket, prefixes):
+        if prefixes:
+            own = ticket.rsplit("-", 1)[0]  # the shape check above guarantees KEY-<digits>
+            raise ValueError(
+                f"ticket {ticket!r} does not start with a configured key prefix ({', '.join(prefixes)}), "
+                "so the catalog and validate-job would not recognize its folder. Use a ticket like "
+                f"{prefixes[0]}-123, or add {own} to project.key_prefixes in jobwright.config.yaml."
+            )
+        raise ValueError(
+            f"ticket {ticket!r} must start with an upper-case key (e.g. JOB-1234) for the catalog "
+            "to recognize its folder."
         )
     # `name` is a human label rendered into comments/docstrings — collapse whitespace and
     # neutralize quotes so it can't break the generated Python/JSON.

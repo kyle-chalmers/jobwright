@@ -21,6 +21,16 @@ import sys
 DEFAULT_DEPLOYABLE_DIRS = ("databricks/job_definitions/dev/", "databricks/job_definitions/prod/")
 
 
+def deployable_dirs(cfg) -> tuple[str, ...]:
+    """The configured ``platform.job_def_dirs`` as match prefixes, or the defaults when none are set.
+
+    ``validate-job`` and ``check job-defs`` both decide through this, so the two gates agree on
+    which files must carry a job name.
+    """
+    dirs = tuple(rel.rstrip("/") + "/" for rel in (cfg.platform.job_def_dirs or {}).values())
+    return dirs or DEFAULT_DEPLOYABLE_DIRS
+
+
 def check_file(path: str, deployable_dirs: tuple[str, ...] = DEFAULT_DEPLOYABLE_DIRS) -> str | None:
     """Return an error string for path, or None if it passes."""
     try:
@@ -41,12 +51,12 @@ def check_file(path: str, deployable_dirs: tuple[str, ...] = DEFAULT_DEPLOYABLE_
     return None
 
 
-def main(argv: list[str]) -> int:
+def main(argv: list[str], deployable: tuple[str, ...] = DEFAULT_DEPLOYABLE_DIRS) -> int:
     if not argv:
         print("validate_job_definitions: no JSON files to check")
         return 0
 
-    errors = [err for path in argv if (err := check_file(path))]
+    errors = [err for path in argv if (err := check_file(path, deployable))]
     for err in errors:
         print(f"INVALID JOB DEFINITION: {err}", file=sys.stderr)
 
