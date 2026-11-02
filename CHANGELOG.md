@@ -58,6 +58,11 @@ from the same design.
   was not a JSON object (or had a string `schedule`) made `jobwright jobs-index` exit with a
   traceback, and the PostToolUse hook quietly stopped refreshing `JOBS.md`. That file is now
   skipped for the catalog (the row falls back to `claude.md`), and `validate-job` still names it.
+- **`jobwright new-job` could scaffold a job its own gate then failed.** A ticket whose prefix
+  was not in `project.key_prefixes` (say `ABC-12` in a `JOB` repo) got a folder and a definition
+  stub that the catalog skipped and `validate-job` failed with "missing for None". It now stops
+  before writing anything and says to use a configured prefix or add one. A malformed ticket or
+  name is reported in one line (exit 2) instead of a Python traceback.
 
 ## [0.5.1] — 2026-09-12
 

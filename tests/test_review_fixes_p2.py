@@ -9,6 +9,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parent.parent
 REGEN_HOOK = REPO / "hooks" / "regenerate_jobs_index.py"
 SESSION_HOOK = REPO / "hooks" / "session_start.sh"
@@ -50,6 +52,37 @@ def test_scaffolder_sanitizes_name_into_valid_python(tmp_path):
     nb = next(p for p in res.created if p.suffix == ".py")
     nb.relative_to((tmp_path / "jobs").resolve())  # stayed under jobs/
     ast.parse(nb.read_text())  # docstring not broken by the quotes/newline
+
+
+def test_scaffolder_refuses_a_ticket_the_catalog_cannot_see(tmp_path):
+    # `new-job ABC-12 ...` in a JOB-prefixed repo used to create ABC-12_x/ and its definition
+    # stub, which the catalog then skipped and validate-job failed ("REQUIRED ... missing for
+    # None"). It now refuses before writing anything and names the fix.
+    from jobwright.scaffolder import new_job
+
+    for bad in ("ABC-12", "job-12"):
+        with pytest.raises(ValueError, match="key_prefixes"):
+            new_job(_cfg(), tmp_path, bad, "x", today="2026-01-01")
+    assert not (tmp_path / "jobs").exists()
+    assert not (tmp_path / "databricks").exists()
+
+
+def test_new_job_cli_reports_a_bad_ticket_without_a_traceback(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from jobwright.cli import app
+
+    (tmp_path / "jobwright.config.yaml").write_text(
+        "project:\n  key_prefixes: [JOB]\n  jobs_dir: jobs\n"
+        "platform:\n  kind: databricks\n  deploy_model: api-reset\n"
+        "  job_def_dirs: {dev: defs/dev}\n"
+    )
+    monkeypatch.chdir(tmp_path)
+    for bad in ("../evil", "ABC-12"):
+        r = CliRunner().invoke(app, ["new-job", bad, "x"])
+        assert r.exit_code == 2, (bad, r.output)
+        assert r.exception is None or isinstance(r.exception, SystemExit), (bad, r.exception)
+        assert "✗ ticket" in r.output, (bad, r.output)
 
 
 # --------------------------------------------------------------------------- #

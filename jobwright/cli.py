@@ -533,7 +533,11 @@ def new_job_cmd(
     from .scaffolder import new_job
 
     cfg, root = _load()
-    res = new_job(cfg, root, ticket, name, today=date.today().isoformat(), force=force)
+    try:
+        res = new_job(cfg, root, ticket, name, today=date.today().isoformat(), force=force)
+    except ValueError as exc:  # a bad ticket or name: say how to fix it, not a traceback
+        typer.secho(f"✗ {exc}", fg=typer.colors.RED)
+        raise typer.Exit(2) from None
     for p in res.created:
         typer.secho(f"  + {p.relative_to(root)}", fg=typer.colors.GREEN)
     for p in res.skipped:
